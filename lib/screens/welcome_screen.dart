@@ -14,13 +14,13 @@ class WelcomeScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const BrandLogo(),
-              const SizedBox(height: 28),
+              const SizedBox(height: 24),
 
               // Indigo Hero Card
               Container(
@@ -81,7 +81,7 @@ class WelcomeScreen extends StatelessWidget {
                         height: 1.5,
                       ),
                     ),
-                    const SizedBox(height: 28),
+                    const SizedBox(height: 24),
                     Container(
                       padding: const EdgeInsets.only(top: 20),
                       decoration: BoxDecoration(
@@ -102,7 +102,7 @@ class WelcomeScreen extends StatelessWidget {
                 ),
               ),
 
-              const Spacer(),
+              const SizedBox(height: 24),
 
               // Action Buttons
               const Center(

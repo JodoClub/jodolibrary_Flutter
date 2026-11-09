@@ -8,6 +8,8 @@ import 'screens/partner_home_screen.dart';
 import 'screens/student_home_screen.dart';
 import 'screens/student_setup_screen.dart';
 import 'screens/welcome_screen.dart';
+import 'services/api_service.dart';
+import 'services/auth_storage.dart';
 import 'theme/app_theme.dart';
 
 void main() {
@@ -39,6 +41,7 @@ class JodoRootFlow extends StatefulWidget {
 class _JodoRootFlowState extends State<JodoRootFlow> {
   AppScreen _currentScreen = AppScreen.welcome;
   UserRole? _role;
+  String _phone = '9876543210';
 
   List<ActivityItem> _partnerActivities = [
     const ActivityItem(
@@ -62,6 +65,29 @@ class _JodoRootFlowState extends State<JodoRootFlow> {
       detail: 'Vikram Raj · Tomorrow',
     ),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _checkSavedSession();
+  }
+
+  Future<void> _checkSavedSession() async {
+    final loggedIn = await AuthStorage.isLoggedIn();
+    if (loggedIn) {
+      final role = await AuthStorage.getRole();
+      final phone = await AuthStorage.getPhone();
+      if (mounted && role != null) {
+        setState(() {
+          _role = role;
+          if (phone != null) _phone = phone;
+          _currentScreen = role == UserRole.admin
+              ? AppScreen.partnerHome
+              : AppScreen.studentHome;
+        });
+      }
+    }
+  }
 
   void _handleStudentAttendanceMarked(String time, String type) {
     setState(() {
@@ -104,7 +130,9 @@ class _JodoRootFlowState extends State<JodoRootFlow> {
     setState(() => _currentScreen = screen);
   }
 
-  void _restart() {
+  Future<void> _restart() async {
+    await ApiService.logout();
+    if (!mounted) return;
     setState(() {
       _currentScreen = AppScreen.welcome;
       _role = null;
@@ -121,12 +149,18 @@ class _JodoRootFlowState extends State<JodoRootFlow> {
         return MobileScreen(
           role: _role ?? UserRole.student,
           onBack: _restart,
-          onContinue: () => _goTo(AppScreen.otp),
+          onContinue: (phone) {
+            setState(() {
+              _phone = phone;
+              _currentScreen = AppScreen.otp;
+            });
+          },
         );
 
       case AppScreen.otp:
         return OTPScreen(
           role: _role ?? UserRole.student,
+          phone: _phone,
           onBack: () => _goTo(AppScreen.mobile),
           onVerify: _verifyOtp,
         );

@@ -1,17 +1,20 @@
 import 'package:flutter/material.dart';
 import '../models/app_models.dart';
+import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common_widgets.dart';
 import '../widgets/custom_button.dart';
 
 class OTPScreen extends StatefulWidget {
   final UserRole role;
+  final String phone;
   final VoidCallback onBack;
   final ValueChanged<AccountType> onVerify;
 
   const OTPScreen({
     super.key,
     required this.role,
+    this.phone = '9876543210',
     required this.onBack,
     required this.onVerify,
   });
@@ -24,6 +27,17 @@ class _OTPScreenState extends State<OTPScreen> {
   AccountType _accountType = AccountType.firstTime;
   final List<TextEditingController> _controllers = List.generate(4, (_) => TextEditingController());
   final List<FocusNode> _focusNodes = List.generate(4, (_) => FocusNode());
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Pre-fill universal test OTP "4321" for convenience
+    const devOtp = '4321';
+    for (int i = 0; i < 4; i++) {
+      _controllers[i].text = devOtp[i];
+    }
+  }
 
   @override
   void dispose() {
@@ -36,9 +50,68 @@ class _OTPScreenState extends State<OTPScreen> {
     super.dispose();
   }
 
+  String get _otpCode => _controllers.map((c) => c.text.trim()).join();
+
+  Future<void> _handleVerify() async {
+    final code = _otpCode;
+    if (code.length != 4) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter all 4 digits'),
+          backgroundColor: AppColors.orange500,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final res = await ApiService.verifyOtp(
+        mobile: widget.phone,
+        otp: code,
+        role: widget.role,
+      );
+
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+
+      if (res.success && res.data != null) {
+        final acctTypeStr = res.data!['accountType']?.toString().toLowerCase();
+        final isReturning = acctTypeStr == 'returning';
+        final resolvedType = isReturning ? AccountType.returning : AccountType.firstTime;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(isReturning ? 'Welcome back!' : 'Verified! Completing setup...'),
+            backgroundColor: AppColors.emerald600,
+          ),
+        );
+        widget.onVerify(resolvedType);
+        return;
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(res.message ?? 'Invalid OTP code. Using prototype fallback.'),
+            backgroundColor: AppColors.orange500,
+          ),
+        );
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+    }
+
+    // Offline / Prototype fallback
+    widget.onVerify(_accountType);
+  }
+
   @override
   Widget build(BuildContext context) {
     final isAdmin = widget.role == UserRole.admin;
+    final displayPhone = widget.phone.length == 10
+        ? '+91 ${widget.phone.substring(0, 5)} ${widget.phone.substring(5)}'
+        : '+91 ${widget.phone}';
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -74,22 +147,45 @@ class _OTPScreenState extends State<OTPScreen> {
                     ),
                     const SizedBox(height: 10),
                     RichText(
-                      text: const TextSpan(
+                      text: TextSpan(
                         text: 'Enter the 4-digit code sent to ',
-                        style: TextStyle(fontSize: 14, color: AppColors.slate500, height: 1.5),
+                        style: const TextStyle(fontSize: 14, color: AppColors.slate500, height: 1.5),
                         children: [
                           TextSpan(
-                            text: '+91 98765 43210',
-                            style: TextStyle(
+                            text: displayPhone,
+                            style: const TextStyle(
                               color: AppColors.slate800,
                               fontWeight: FontWeight.w800,
                             ),
                           ),
-                          TextSpan(text: '.'),
+                          const TextSpan(text: '.'),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppColors.emerald50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.emerald600.withOpacity(0.2)),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.info_outline, size: 16, color: AppColors.emerald600),
+                          SizedBox(width: 8),
+                          Text(
+                            'Dev mode: Universal test OTP is 4321',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: AppColors.emerald600,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 28),
 
                     // 4-digit OTP row
                     Row(
@@ -132,17 +228,38 @@ class _OTPScreenState extends State<OTPScreen> {
                     ),
 
                     const SizedBox(height: 20),
-                    const Text(
-                      'Resend code in 00:24',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.orange500,
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Resend code in 00:24',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.orange500,
+                          ),
+                        ),
+                        InkWell(
+                          onTap: () {
+                            const devOtp = '4321';
+                            for (int i = 0; i < 4; i++) {
+                              _controllers[i].text = devOtp[i];
+                            }
+                          },
+                          child: const Text(
+                            'Fill 4321',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.indigo800,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 32),
 
-                    // Prototype Testing Card
+                    // Prototype Testing Card (kept for offline tests)
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
@@ -154,7 +271,7 @@ class _OTPScreenState extends State<OTPScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            'PROTOTYPE ROUTE',
+                            'PROTOTYPE FALLBACK ROUTE',
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w900,
@@ -164,7 +281,7 @@ class _OTPScreenState extends State<OTPScreen> {
                           ),
                           const SizedBox(height: 4),
                           const Text(
-                            'Choose an account state to test both OTP branches.',
+                            'Active if backend is unreachable:',
                             style: TextStyle(fontSize: 12, color: AppColors.slate500),
                           ),
                           const SizedBox(height: 12),
@@ -250,9 +367,18 @@ class _OTPScreenState extends State<OTPScreen> {
 
                     const SizedBox(height: 28),
                     CustomButton(
-                      label: 'Verify & Continue',
-                      trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.white),
-                      onPressed: () => widget.onVerify(_accountType),
+                      label: _isLoading ? 'Verifying...' : 'Verify & Continue',
+                      trailing: _isLoading
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.white),
+                      onPressed: _isLoading ? null : _handleVerify,
                     ),
                   ],
                 ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/app_models.dart';
+import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common_widgets.dart';
 import '../widgets/custom_button.dart';
@@ -7,7 +8,7 @@ import '../widgets/custom_button.dart';
 class MobileScreen extends StatefulWidget {
   final UserRole role;
   final VoidCallback onBack;
-  final VoidCallback onContinue;
+  final ValueChanged<String> onContinue;
 
   const MobileScreen({
     super.key,
@@ -22,11 +23,57 @@ class MobileScreen extends StatefulWidget {
 
 class _MobileScreenState extends State<MobileScreen> {
   final TextEditingController _phoneController = TextEditingController();
+  bool _isLoading = false;
 
   @override
   void dispose() {
     _phoneController.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleGetOtp() async {
+    final phone = _phoneController.text.trim();
+    if (phone.length != 10 || !RegExp(r'^\d{10}$').hasMatch(phone)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a valid 10-digit mobile number'),
+          backgroundColor: AppColors.orange500,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final res = await ApiService.sendOtp(mobile: phone, role: widget.role);
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+
+      if (res.success) {
+        final devOtp = res.data?['devOtp'];
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(devOtp != null
+                ? 'OTP sent! Test OTP is: $devOtp'
+                : 'OTP sent to +91 $phone'),
+            backgroundColor: AppColors.emerald600,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(res.message ?? 'Server notice: proceeding in offline mode'),
+            backgroundColor: AppColors.indigo800,
+          ),
+        );
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+    }
+
+    widget.onContinue(phone);
   }
 
   @override
@@ -143,11 +190,18 @@ class _MobileScreenState extends State<MobileScreen> {
 
                     const SizedBox(height: 24),
                     CustomButton(
-                      label: 'Get OTP',
-                      trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.white),
-                      onPressed: () {
-                        widget.onContinue();
-                      },
+                      label: _isLoading ? 'Sending code...' : 'Get OTP',
+                      trailing: _isLoading
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.white),
+                      onPressed: _isLoading ? null : _handleGetOtp,
                     ),
 
                     const SizedBox(height: 24),
