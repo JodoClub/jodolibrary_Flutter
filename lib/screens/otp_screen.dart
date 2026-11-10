@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/app_models.dart';
@@ -30,10 +31,13 @@ class _OTPScreenState extends State<OTPScreen> {
   final List<FocusNode> _focusNodes = List.generate(4, (_) => FocusNode());
   bool _isLoading = false;
   bool _isResending = false;
+  int _resendCooldownSeconds = 0;
+  Timer? _resendTimer;
   String? _otpError;
 
   @override
   void dispose() {
+    _resendTimer?.cancel();
     for (var c in _controllers) {
       c.dispose();
     }
@@ -41,6 +45,31 @@ class _OTPScreenState extends State<OTPScreen> {
       f.dispose();
     }
     super.dispose();
+  }
+
+  void _startResendCooldown(int seconds) {
+    _resendTimer?.cancel();
+    setState(() => _resendCooldownSeconds = seconds);
+    _resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() {
+        if (_resendCooldownSeconds > 1) {
+          _resendCooldownSeconds--;
+        } else {
+          _resendCooldownSeconds = 0;
+          timer.cancel();
+        }
+      });
+    });
+  }
+
+  String _formatCountdown(int totalSeconds) {
+    final mins = (totalSeconds ~/ 60).toString().padLeft(2, '0');
+    final secs = (totalSeconds % 60).toString().padLeft(2, '0');
+    return '$mins:$secs';
   }
 
   String get _otpCode => _controllers.map((c) => c.text.trim()).join();
@@ -116,7 +145,7 @@ class _OTPScreenState extends State<OTPScreen> {
   }
 
   Future<void> _handleResendOtp() async {
-    if (_isResending) return;
+    if (_isResending || _resendCooldownSeconds > 0) return;
     setState(() => _isResending = true);
 
     try {
@@ -125,6 +154,7 @@ class _OTPScreenState extends State<OTPScreen> {
       setState(() => _isResending = false);
 
       if (res.success) {
+        _startResendCooldown(res.retryAfterSeconds ?? 60);
         final devOtp = res.data?['devOtp'];
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -133,12 +163,22 @@ class _OTPScreenState extends State<OTPScreen> {
           ),
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(res.message ?? 'Could not resend OTP. Please wait a moment.'),
-            backgroundColor: AppColors.rose600,
-          ),
-        );
+        if (res.retryAfterSeconds != null && res.retryAfterSeconds! > 0) {
+          _startResendCooldown(res.retryAfterSeconds!);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Rate limit locked. Please wait ${_formatCountdown(res.retryAfterSeconds!)}.'),
+              backgroundColor: AppColors.rose600,
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(res.message ?? 'Could not resend OTP. Please wait a moment.'),
+              backgroundColor: AppColors.rose600,
+            ),
+          );
+        }
       }
     } catch (_) {
       if (!mounted) return;
@@ -327,13 +367,19 @@ class _OTPScreenState extends State<OTPScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         InkWell(
-                          onTap: _isResending ? null : _handleResendOtp,
+                          onTap: (_isResending || _resendCooldownSeconds > 0) ? null : _handleResendOtp,
                           child: Text(
-                            _isResending ? 'Sending...' : 'Resend OTP Code',
-                            style: const TextStyle(
+                            _isResending
+                                ? 'Sending...'
+                                : (_resendCooldownSeconds > 0
+                                    ? 'Resend in ${_formatCountdown(_resendCooldownSeconds)}'
+                                    : 'Resend OTP Code'),
+                            style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w800,
-                              color: AppColors.primary,
+                              color: (_isResending || _resendCooldownSeconds > 0)
+                                  ? AppColors.slate400
+                                  : AppColors.primary,
                             ),
                           ),
                         ),

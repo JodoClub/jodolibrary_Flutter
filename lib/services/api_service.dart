@@ -9,12 +9,14 @@ class ApiResponse<T> {
   final T? data;
   final String? message;
   final String? code;
+  final int? retryAfterSeconds;
 
   ApiResponse({
     required this.success,
     this.data,
     this.message,
     this.code,
+    this.retryAfterSeconds,
   });
 }
 
@@ -61,10 +63,27 @@ class ApiService {
       if (response.statusCode == 200 && json['success'] == true) {
         return ApiResponse(success: true, data: json);
       } else {
+        int? retrySec = (json['retryAfterSeconds'] as num?)?.toInt();
+        if (retrySec == null && response.headers['retry-after'] != null) {
+          retrySec = int.tryParse(response.headers['retry-after']!);
+        }
+        final msg = json['message'] as String? ?? 'Failed to send OTP';
+        if (retrySec == null) {
+          final match = RegExp(r'(\d+)\s*(?:s|seconds)', caseSensitive: false).firstMatch(msg);
+          if (match != null) {
+            retrySec = int.tryParse(match.group(1)!);
+          }
+        }
+        // If HTTP 429 or OTP_RATE_LIMIT, default to 60 seconds (1 minute lock)
+        if (retrySec == null && (response.statusCode == 429 || json['code'] == 'OTP_RATE_LIMIT')) {
+          retrySec = 60;
+        }
+
         return ApiResponse(
           success: false,
           code: json['code'] as String?,
-          message: json['message'] as String? ?? 'Failed to send OTP',
+          message: msg,
+          retryAfterSeconds: retrySec,
         );
       }
     } catch (e) {
@@ -193,6 +212,155 @@ class ApiService {
           success: false,
           code: json['code'] as String?,
           message: json['message'] as String? ?? 'Owner setup failed',
+        );
+      }
+    } catch (e) {
+      return ApiResponse(success: false, message: '$e');
+    }
+  }
+
+  /// Get authenticated user and role profile (GET /auth/me)
+  static Future<ApiResponse<Map<String, dynamic>>> getMe() async {
+    try {
+      final token = await AuthStorage.getToken();
+      final uri = Uri.parse('${ApiConfig.baseUrl}/auth/me');
+      final response = await http
+          .get(uri, headers: _buildHeaders(token: token))
+          .timeout(_timeout);
+
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 200 && json['success'] == true) {
+        final user = json['user'] as Map<String, dynamic>?;
+        final profile = json['profile'] as Map<String, dynamic>?;
+        if (user != null) {
+          final role = await AuthStorage.getRole();
+          if (role == UserRole.admin && profile != null) {
+            await AuthStorage.saveOwnerProfile(
+              ownerName: user['name']?.toString() ?? '',
+              libraryName: profile['name']?.toString() ?? '',
+              address: profile['address']?.toString() ?? '',
+              city: profile['city']?.toString() ?? 'Patna',
+              totalSeats: profile['totalSeats'] is int ? profile['totalSeats'] as int : 60,
+            );
+          } else if (role == UserRole.student && profile != null) {
+            await AuthStorage.saveStudentProfile(
+              fullName: user['name']?.toString() ?? '',
+              examCategory: profile['examCategory']?.toString() ?? 'UPSC / Civil Services',
+              emergencyContact: profile['emergencyContact']?.toString() ?? '',
+              gender: profile['gender']?.toString() ?? 'Other',
+              studentCode: profile['code']?.toString(),
+            );
+          }
+        }
+        return ApiResponse(success: true, data: json);
+      } else {
+        return ApiResponse(success: false, message: json['message']?.toString());
+      }
+    } catch (e) {
+      return ApiResponse(success: false, message: '$e');
+    }
+  }
+
+  /// Update owner contact and library details (PUT /owner/profile)
+  static Future<ApiResponse<Map<String, dynamic>>> updateOwnerProfile({
+    required String ownerName,
+    required String libraryName,
+    required String address,
+    required String city,
+    required int totalSeats,
+    String? mobile,
+  }) async {
+    try {
+      final token = await AuthStorage.getToken();
+      final cleanMobile = mobile?.replaceAll(RegExp(r'\D'), '');
+      final uri = Uri.parse('${ApiConfig.baseUrl}/owner/profile');
+      final body = jsonEncode({
+        'ownerName': ownerName.trim(),
+        'libraryName': libraryName.trim(),
+        'branchName': 'Branch 1',
+        'address': address.trim(),
+        'city': city.trim(),
+        'totalSeats': totalSeats,
+        if (cleanMobile != null && cleanMobile.length == 10) 'mobile': cleanMobile,
+        if (cleanMobile != null && cleanMobile.length == 10) 'countryCode': '+91',
+      });
+
+      final response = await http
+          .put(uri, headers: _buildHeaders(token: token), body: body)
+          .timeout(_timeout);
+
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        await AuthStorage.saveOwnerProfile(
+          ownerName: ownerName,
+          libraryName: libraryName,
+          address: address,
+          city: city,
+          totalSeats: totalSeats,
+        );
+        return ApiResponse(success: true, data: json);
+      } else {
+        return ApiResponse(
+          success: false,
+          code: json['code'] as String?,
+          message: json['message'] as String? ?? 'Failed to update owner profile',
+        );
+      }
+    } catch (e) {
+      return ApiResponse(success: false, message: '$e');
+    }
+  }
+
+  /// Update student profile (PUT /student/profile)
+  static Future<ApiResponse<Map<String, dynamic>>> updateStudentProfile({
+    required String fullName,
+    required String examCategory,
+    String? emergencyContact,
+    required String gender,
+    String? mobile,
+  }) async {
+    try {
+      final token = await AuthStorage.getToken();
+      final cleanMobile = mobile?.replaceAll(RegExp(r'\D'), '');
+      final uri = Uri.parse('${ApiConfig.baseUrl}/student/profile');
+
+      String? cleanEmergency;
+      if (emergencyContact != null && emergencyContact.trim().isNotEmpty) {
+        final digits = emergencyContact.replaceAll(RegExp(r'\D'), '');
+        if (digits.length == 10) {
+          cleanEmergency = '+91$digits';
+        } else if (digits.length > 10 && digits.length <= 13) {
+          cleanEmergency = emergencyContact.trim().startsWith('+') ? '+$digits' : digits;
+        }
+      }
+
+      final body = jsonEncode({
+        'fullName': fullName.trim(),
+        'examCategory': examCategory,
+        if (cleanEmergency != null) 'emergencyContact': cleanEmergency,
+        'gender': gender,
+        if (cleanMobile != null && cleanMobile.length == 10) 'mobile': cleanMobile,
+        if (cleanMobile != null && cleanMobile.length == 10) 'countryCode': '+91',
+      });
+
+      final response = await http
+          .put(uri, headers: _buildHeaders(token: token), body: body)
+          .timeout(_timeout);
+
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        await AuthStorage.saveStudentProfile(
+          fullName: fullName,
+          examCategory: examCategory,
+          emergencyContact: cleanEmergency ?? emergencyContact ?? '',
+          gender: gender,
+        );
+        return ApiResponse(success: true, data: json);
+      } else {
+        return ApiResponse(
+          success: false,
+          code: json['code'] as String?,
+          message: json['message'] as String? ?? 'Failed to update student profile',
         );
       }
     } catch (e) {

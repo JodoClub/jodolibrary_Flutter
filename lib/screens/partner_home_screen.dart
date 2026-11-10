@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/app_models.dart';
+import '../services/api_service.dart';
+import '../services/auth_storage.dart';
 import '../theme/app_theme.dart';
 import '../widgets/brand_logo.dart';
 import '../widgets/custom_button.dart';
@@ -26,6 +28,99 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
   int _selectedSeat = 14;
   String _seatFilter = 'all'; // 'all', 'occupied', 'reserved', 'available'
   String _memberSearch = '';
+
+  // Real Owner Profile State
+  String _ownerName = 'Library Owner';
+  String _libraryName = 'My Study Hub';
+  String _address = 'Boring Road, Patna';
+  String _city = 'Patna';
+  int _totalSeats = 60;
+  String _ownerPhone = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfileData();
+  }
+
+  Future<void> _loadProfileData() async {
+    final stored = await AuthStorage.getStoredProfile();
+    if (mounted) {
+      setState(() {
+        if (stored['name'] != null && stored['name'].toString().trim().isNotEmpty) {
+          _ownerName = stored['name'].toString().trim();
+        }
+        if (stored['libraryName'] != null && stored['libraryName'].toString().trim().isNotEmpty) {
+          _libraryName = stored['libraryName'].toString().trim();
+        }
+        if (stored['address'] != null && stored['address'].toString().trim().isNotEmpty) {
+          _address = stored['address'].toString().trim();
+        }
+        if (stored['city'] != null && stored['city'].toString().trim().isNotEmpty) {
+          _city = stored['city'].toString().trim();
+        }
+        if (stored['totalSeats'] != null && stored['totalSeats'] is int) {
+          _totalSeats = stored['totalSeats'] as int;
+        }
+        if (stored['phone'] != null) {
+          _ownerPhone = stored['phone'].toString().trim();
+        }
+      });
+    }
+
+    try {
+      final res = await ApiService.getMe();
+      if (res.success && res.data != null && mounted) {
+        final user = res.data!['user'] as Map<String, dynamic>?;
+        final profile = res.data!['profile'] as Map<String, dynamic>?;
+        setState(() {
+          if (user?['name'] != null && user!['name'].toString().trim().isNotEmpty) {
+            _ownerName = user['name'].toString().trim();
+          }
+          if (user?['mobile'] != null) {
+            _ownerPhone = user!['mobile'].toString().trim();
+          }
+          if (profile?['name'] != null && profile!['name'].toString().trim().isNotEmpty) {
+            _libraryName = profile['name'].toString().trim();
+          }
+          if (profile?['address'] != null && profile!['address'].toString().trim().isNotEmpty) {
+            _address = profile['address'].toString().trim();
+          }
+          if (profile?['city'] != null && profile!['city'].toString().trim().isNotEmpty) {
+            _city = profile['city'].toString().trim();
+          }
+          if (profile?['totalSeats'] != null) {
+            _totalSeats = profile!['totalSeats'] as int;
+          }
+        });
+        await AuthStorage.saveOwnerProfile(
+          ownerName: _ownerName,
+          libraryName: _libraryName,
+          address: _address,
+          city: _city,
+          totalSeats: _totalSeats,
+        );
+      }
+    } catch (_) {}
+  }
+
+  String _getInitials(String name) {
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.length >= 2 && parts[0].isNotEmpty && parts[1].isNotEmpty) {
+      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    } else if (parts.isNotEmpty && parts[0].isNotEmpty) {
+      return parts[0][0].toUpperCase();
+    }
+    return 'LO';
+  }
+
+  String _getFirstName(String name) {
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.isNotEmpty && parts[0].isNotEmpty) {
+      return parts[0];
+    }
+    return 'Partner';
+  }
 
   // Add Member State
   final List<MemberInfo> _members = [
@@ -149,16 +244,16 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
-                              color: AppColors.orange500.withOpacity(0.3),
+                              color: AppColors.orange500.withValues(alpha: 0.3),
                               blurRadius: 10,
                               offset: const Offset(0, 3),
                             ),
                           ],
                         ),
                         alignment: Alignment.center,
-                        child: const Text(
-                          'RS',
-                          style: TextStyle(
+                        child: Text(
+                          _getInitials(_ownerName),
+                          style: const TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.w900,
                             fontSize: 16,
@@ -168,8 +263,8 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                       const SizedBox(width: 14),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text(
+                        children: [
+                          const Text(
                             'OWNER PORTAL',
                             style: TextStyle(
                               color: AppColors.orange400,
@@ -178,10 +273,10 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                               letterSpacing: 1,
                             ),
                           ),
-                          SizedBox(height: 2),
+                          const SizedBox(height: 2),
                           Text(
-                            'Hello, Rohit 👋',
-                            style: TextStyle(
+                            'Hello, ${_getFirstName(_ownerName)} 👋',
+                            style: const TextStyle(
                               color: Colors.white,
                               fontSize: 20,
                               fontWeight: FontWeight.w900,
@@ -234,18 +329,18 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                         const SizedBox(width: 10),
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
-                          children: const [
+                          children: [
                             Text(
-                              'Achievers Study Hub',
-                              style: TextStyle(
+                              _libraryName,
+                              style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w900,
                                 fontSize: 12,
                               ),
                             ),
                             Text(
-                              'Branch 1 · Boring Road, Patna',
-                              style: TextStyle(color: AppColors.indigo300, fontSize: 10),
+                              '$_address, $_city · $_totalSeats Desks',
+                              style: const TextStyle(color: AppColors.indigo300, fontSize: 10),
                             ),
                           ],
                         ),
@@ -1150,16 +1245,16 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
-                          color: AppColors.orange500.withOpacity(0.3),
+                          color: AppColors.orange500.withValues(alpha: 0.3),
                           blurRadius: 10,
                           offset: const Offset(0, 4),
                         ),
                       ],
                     ),
                     alignment: Alignment.center,
-                    child: const Text(
-                      'RS',
-                      style: TextStyle(
+                    child: Text(
+                      _getInitials(_ownerName),
+                      style: const TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w900,
                         color: Colors.white,
@@ -1167,23 +1262,52 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                     ),
                   ),
                   const SizedBox(width: 16),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Text(
-                        'Rohit Sharma',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _ownerName,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                          ),
                         ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Library Owner · $_libraryName',
+                          style: const TextStyle(fontSize: 12, color: AppColors.indigo200),
+                        ),
+                      ],
+                    ),
+                  ),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: _openEditOwnerProfileModal,
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
                       ),
-                      SizedBox(height: 2),
-                      Text(
-                        'Library Owner · Achievers Study Hub',
-                        style: TextStyle(fontSize: 12, color: AppColors.indigo200),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.edit_rounded, color: Colors.white, size: 16),
+                          SizedBox(width: 4),
+                          Text(
+                            'Edit',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 ],
               ),
@@ -1207,20 +1331,37 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'LIBRARY DETAILS',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors.slate400,
-                        letterSpacing: 1,
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'LIBRARY DETAILS',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.slate400,
+                            letterSpacing: 1,
+                          ),
+                        ),
+                        InkWell(
+                          onTap: _openEditOwnerProfileModal,
+                          child: const Text(
+                            'Edit Info',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 14),
-                    _buildSettingsRow('Hub Name', 'Achievers Study Hub (Branch 1)'),
-                    _buildSettingsRow('Address', 'Boring Road, Patna, Bihar'),
-                    _buildSettingsRow('Total Desks', '60 Dedicated Desks'),
-                    _buildSettingsRow('Pricing', '₹1,499 / student / month'),
+                    _buildSettingsRow('Hub Name', _libraryName),
+                    _buildSettingsRow('Address', '$_address, $_city'),
+                    _buildSettingsRow('Total Desks', '$_totalSeats Dedicated Desks'),
+                    _buildSettingsRow('Contact', _ownerPhone.isNotEmpty ? _ownerPhone : '+91 98765 43210'),
+                    _buildSettingsRow('Standard Plan', '₹1,499 / student / month'),
                   ],
                 ),
               ),
@@ -1285,6 +1426,231 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
             style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.slate800),
           ),
         ],
+      ),
+    );
+  }
+
+  void _openEditOwnerProfileModal() {
+    final nameCtrl = TextEditingController(text: _ownerName);
+    final libCtrl = TextEditingController(text: _libraryName);
+    final addrCtrl = TextEditingController(text: _address);
+    final seatsCtrl = TextEditingController(text: _totalSeats.toString());
+    final phoneCtrl = TextEditingController(text: _ownerPhone.replaceAll('+91', '').trim());
+    String selectedCity = _city;
+    bool isSaving = false;
+    String? nameError;
+    String? libError;
+    String? addrError;
+    String? seatsError;
+
+    final cities = [
+      'Patna',
+      'Delhi',
+      'Mumbai',
+      'Kota',
+      'Bangalore',
+      'Pune',
+      'Jaipur',
+      'Lucknow',
+      'Hyderabad',
+      'Kolkata',
+    ];
+    if (!cities.contains(selectedCity)) {
+      cities.insert(0, selectedCity);
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) {
+          return Dialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+            insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(22),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: const [
+                          Text(
+                            'SETTINGS & PROFILE',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.orange500,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                          Text(
+                            'Edit Library Profile',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.slate900,
+                            ),
+                          ),
+                        ],
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.of(ctx).pop(),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  FormFieldWidget(
+                    label: 'OWNER FULL NAME',
+                    placeholder: 'e.g. Vikash Soni',
+                    controller: nameCtrl,
+                    errorText: nameError,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z\s]')),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  FormFieldWidget(
+                    label: 'LIBRARY / HUB NAME',
+                    placeholder: 'e.g. Achievers Study Hub',
+                    controller: libCtrl,
+                    errorText: libError,
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownFieldWidget(
+                    label: 'CITY',
+                    value: selectedCity,
+                    items: cities,
+                    onChanged: (val) {
+                      if (val != null) setModalState(() => selectedCity = val);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  FormFieldWidget(
+                    label: 'COMPLETE ADDRESS',
+                    placeholder: 'e.g. Boring Road, Near Pillar 12',
+                    controller: addrCtrl,
+                    errorText: addrError,
+                  ),
+                  const SizedBox(height: 12),
+                  FormFieldWidget(
+                    label: 'CONTACT NUMBER',
+                    placeholder: '10-digit mobile number',
+                    prefix: '+91',
+                    controller: phoneCtrl,
+                    keyboardType: TextInputType.phone,
+                    maxLength: 10,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(10),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  FormFieldWidget(
+                    label: 'TOTAL SEAT CAPACITY',
+                    placeholder: 'e.g. 60',
+                    controller: seatsCtrl,
+                    errorText: seatsError,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  CustomButton(
+                    label: isSaving ? 'Saving Changes...' : 'Save Profile Changes',
+                    onPressed: isSaving
+                        ? null
+                        : () async {
+                            final name = nameCtrl.text.trim();
+                            final lib = libCtrl.text.trim();
+                            final addr = addrCtrl.text.trim();
+                            final seatsStr = seatsCtrl.text.trim();
+                            final seats = int.tryParse(seatsStr);
+
+                            bool hasErr = false;
+                            String? nErr;
+                            String? lErr;
+                            String? aErr;
+                            String? sErr;
+
+                            if (name.length < 3) {
+                              nErr = 'Name must be at least 3 characters';
+                              hasErr = true;
+                            }
+                            if (lib.length < 3) {
+                              lErr = 'Library name must be at least 3 characters';
+                              hasErr = true;
+                            }
+                            if (addr.length < 5) {
+                              aErr = 'Address must be at least 5 characters';
+                              hasErr = true;
+                            }
+                            if (seats == null || seats <= 0 || seats > 1000) {
+                              sErr = 'Seats must be between 1 and 1000';
+                              hasErr = true;
+                            }
+
+                            if (hasErr) {
+                              setModalState(() {
+                                nameError = nErr;
+                                libError = lErr;
+                                addrError = aErr;
+                                seatsError = sErr;
+                              });
+                              return;
+                            }
+
+                            setModalState(() => isSaving = true);
+
+                            final phone = phoneCtrl.text.trim();
+                            final res = await ApiService.updateOwnerProfile(
+                              ownerName: name,
+                              libraryName: lib,
+                              address: addr,
+                              city: selectedCity,
+                              totalSeats: seats!,
+                              mobile: phone.isNotEmpty ? phone : null,
+                            );
+
+                            if (!mounted) return;
+
+                            if (res.success) {
+                              setState(() {
+                                _ownerName = name;
+                                _libraryName = lib;
+                                _address = addr;
+                                _city = selectedCity;
+                                _totalSeats = seats;
+                                if (phone.isNotEmpty) _ownerPhone = '+91 $phone';
+                              });
+                              Navigator.of(ctx).pop();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Profile updated successfully! 🎉'),
+                                  backgroundColor: AppColors.secondary,
+                                ),
+                              );
+                            } else {
+                              setModalState(() => isSaving = false);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(res.message ?? 'Update failed'),
+                                  backgroundColor: AppColors.rose600,
+                                ),
+                              );
+                            }
+                          },
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }

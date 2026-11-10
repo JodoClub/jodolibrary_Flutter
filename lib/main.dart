@@ -86,6 +86,8 @@ class _JodoRootFlowState extends State<JodoRootFlow> {
               : AppScreen.studentHome;
         });
       }
+      // Refresh profile data from backend
+      ApiService.getMe();
     }
   }
 

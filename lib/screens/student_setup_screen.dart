@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/api_service.dart';
+import '../services/auth_storage.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common_widgets.dart';
 import '../widgets/custom_button.dart';
@@ -115,6 +116,14 @@ class _StudentSetupScreenState extends State<StudentSetupScreen> {
       setState(() => _isLoading = false);
 
       if (res.success) {
+        await AuthStorage.saveStudentProfile(
+          fullName: name,
+          examCategory: _selectedExam,
+          emergencyContact: emergency,
+          gender: _selectedGender,
+          studentCode: res.data?['studentCode']?.toString(),
+        );
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Profile setup completed! 🎓'),

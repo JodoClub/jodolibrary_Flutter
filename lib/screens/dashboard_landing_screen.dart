@@ -193,11 +193,11 @@ class _DashboardLandingScreenState extends State<DashboardLandingScreen> {
                   height: 1.5,
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 28),
 
               // 3-second Auto Navigation Countdown Badge
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                 decoration: BoxDecoration(
                   color: AppColors.primary.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(24),
@@ -207,112 +207,26 @@ class _DashboardLandingScreenState extends State<DashboardLandingScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     SizedBox(
-                      width: 14,
-                      height: 14,
+                      width: 18,
+                      height: 18,
                       child: CircularProgressIndicator(
-                        strokeWidth: 2,
+                        strokeWidth: 2.4,
                         value: _secondsRemaining / 3.0,
                         valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primary),
                         backgroundColor: AppColors.slate200,
                       ),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 12),
                     Text(
                       'Redirecting to home in ${_secondsRemaining}s...',
                       style: const TextStyle(
-                        fontSize: 12,
+                        fontSize: 13,
                         fontWeight: FontWeight.w800,
                         color: AppColors.primary,
                         letterSpacing: 0.2,
                       ),
                     ),
                   ],
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // Big Portal Entry Card (tap to enter immediately)
-              InkWell(
-                borderRadius: BorderRadius.circular(24),
-                onTap: _navigateHome,
-                child: Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: AppColors.slate200),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.04),
-                        blurRadius: 15,
-                        offset: const Offset(0, 5),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: AppColors.indigo950,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        alignment: Alignment.center,
-                        child: Icon(
-                          isAdmin ? Icons.dashboard_outlined : Icons.auto_awesome,
-                          color: Colors.white,
-                          size: 24,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              isAdmin ? 'Partner Dashboard' : 'Student Dashboard',
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w900,
-                                color: AppColors.slate900,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            const Text(
-                              'Open your home dashboard',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: AppColors.slate400,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: AppColors.slate100,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              'Enter Now',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w800,
-                                color: AppColors.slate700,
-                              ),
-                            ),
-                            SizedBox(width: 4),
-                            Icon(Icons.arrow_forward_ios, size: 12, color: AppColors.slate600),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
                 ),
               ),
 

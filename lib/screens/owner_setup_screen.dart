@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/api_service.dart';
+import '../services/auth_storage.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common_widgets.dart';
 import '../widgets/custom_button.dart';
@@ -160,6 +161,14 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
       setState(() => _isLoading = false);
 
       if (res.success) {
+        await AuthStorage.saveOwnerProfile(
+          ownerName: ownerName,
+          libraryName: libraryName,
+          address: address,
+          city: _selectedCity!,
+          totalSeats: seats,
+        );
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Library registered and seats generated! 🎉'),

@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/app_models.dart';
+import '../services/api_service.dart';
+import '../services/auth_storage.dart';
 import '../theme/app_theme.dart';
 import '../widgets/brand_logo.dart';
 import '../widgets/custom_button.dart';
 import '../widgets/qr_code_widget.dart';
+import '../widgets/common_widgets.dart';
 
 class StudentHomeScreen extends StatefulWidget {
   final VoidCallback onLogout;
@@ -22,6 +26,114 @@ class StudentHomeScreen extends StatefulWidget {
 class _StudentHomeScreenState extends State<StudentHomeScreen> {
   StudentTab _activeTab = StudentTab.home;
   String _searchQuery = '';
+
+  // Real Student Profile State
+  String _studentName = 'Student Member';
+  String _studentPhone = '';
+  String _examCategory = 'UPSC / Civil Services';
+  String _emergencyContact = '';
+  String _gender = 'Other';
+  String _studentCode = 'JODO-STU-8842';
+  String _activeLibrary = 'Achievers Study Hub (Desk #B-14)';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStudentProfileData();
+  }
+
+  Future<void> _loadStudentProfileData() async {
+    final stored = await AuthStorage.getStoredProfile();
+    if (mounted) {
+      setState(() {
+        if (stored['name'] != null && stored['name'].toString().trim().isNotEmpty) {
+          _studentName = stored['name'].toString().trim();
+        }
+        if (stored['phone'] != null) {
+          _studentPhone = stored['phone'].toString().trim();
+        }
+        if (stored['examCategory'] != null && stored['examCategory'].toString().trim().isNotEmpty) {
+          _examCategory = stored['examCategory'].toString().trim();
+        }
+        if (stored['emergencyContact'] != null && stored['emergencyContact'].toString().trim().isNotEmpty) {
+          _emergencyContact = stored['emergencyContact'].toString().trim();
+        }
+        if (stored['gender'] != null && stored['gender'].toString().trim().isNotEmpty) {
+          final g = stored['gender'].toString().trim().toLowerCase();
+          if (g == 'male') {
+            _gender = 'Male';
+          } else if (g == 'female') {
+            _gender = 'Female';
+          } else {
+            _gender = 'Other';
+          }
+        }
+        if (stored['studentCode'] != null && stored['studentCode'].toString().trim().isNotEmpty) {
+          _studentCode = stored['studentCode'].toString().trim();
+        }
+      });
+    }
+
+    try {
+      final res = await ApiService.getMe();
+      if (res.success && res.data != null && mounted) {
+        final user = res.data!['user'] as Map<String, dynamic>?;
+        final profile = res.data!['profile'] as Map<String, dynamic>?;
+        setState(() {
+          if (user?['name'] != null && user!['name'].toString().trim().isNotEmpty) {
+            _studentName = user['name'].toString().trim();
+          }
+          if (user?['mobile'] != null) {
+            _studentPhone = user!['mobile'].toString().trim();
+          }
+          if (profile?['examCategory'] != null && profile!['examCategory'].toString().trim().isNotEmpty) {
+            _examCategory = profile['examCategory'].toString().trim();
+          }
+          if (profile?['emergencyContact'] != null && profile!['emergencyContact'].toString().trim().isNotEmpty) {
+            _emergencyContact = profile['emergencyContact'].toString().trim();
+          }
+          if (profile?['gender'] != null && profile!['gender'].toString().trim().isNotEmpty) {
+            final g = profile['gender'].toString().trim().toLowerCase();
+            if (g == 'male') {
+              _gender = 'Male';
+            } else if (g == 'female') {
+              _gender = 'Female';
+            } else {
+              _gender = 'Other';
+            }
+          }
+          if (profile?['code'] != null && profile!['code'].toString().trim().isNotEmpty) {
+            _studentCode = profile['code'].toString().trim();
+          }
+        });
+        await AuthStorage.saveStudentProfile(
+          studentCode: _studentCode,
+          fullName: _studentName,
+          examCategory: _examCategory,
+          emergencyContact: _emergencyContact,
+          gender: _gender,
+        );
+      }
+    } catch (_) {}
+  }
+
+  String _getInitials(String name) {
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.length >= 2 && parts[0].isNotEmpty && parts[1].isNotEmpty) {
+      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    } else if (parts.isNotEmpty && parts[0].isNotEmpty) {
+      return parts[0][0].toUpperCase();
+    }
+    return 'SM';
+  }
+
+  String _getFirstName(String name) {
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.isNotEmpty && parts[0].isNotEmpty) {
+      return parts[0];
+    }
+    return 'Student';
+  }
 
   // Interactive attendance state
   bool _isCheckedIn = true;
@@ -291,9 +403,9 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                               ],
                             ),
                             alignment: Alignment.center,
-                            child: const Text(
-                              'AK',
-                              style: TextStyle(
+                            child: Text(
+                              _getInitials(_studentName),
+                              style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w900,
                                 fontSize: 16,
@@ -318,8 +430,8 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                       const SizedBox(width: 14),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text(
+                        children: [
+                          const Text(
                             'Welcome back',
                             style: TextStyle(
                               color: AppColors.indigo300,
@@ -327,10 +439,10 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                               fontWeight: FontWeight.w700,
                             ),
                           ),
-                          SizedBox(height: 2),
+                          const SizedBox(height: 2),
                           Text(
-                            'Hello, Aarav 👋',
-                            style: TextStyle(
+                            'Hello, ${_getFirstName(_studentName)} 👋',
+                            style: const TextStyle(
                               color: Colors.white,
                               fontSize: 20,
                               fontWeight: FontWeight.w900,
@@ -2132,16 +2244,16 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
-                          color: AppColors.orange500.withOpacity(0.3),
+                          color: AppColors.orange500.withValues(alpha: 0.3),
                           blurRadius: 10,
                           offset: const Offset(0, 4),
                         ),
                       ],
                     ),
                     alignment: Alignment.center,
-                    child: const Text(
-                      'AK',
-                      style: TextStyle(
+                    child: Text(
+                      _getInitials(_studentName),
+                      style: const TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w900,
                         color: Colors.white,
@@ -2149,23 +2261,52 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                     ),
                   ),
                   const SizedBox(width: 16),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Text(
-                        'Aarav Kumar',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _studentName,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                          ),
                         ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '$_examCategory Aspirant',
+                          style: const TextStyle(fontSize: 12, color: AppColors.indigo200),
+                        ),
+                      ],
+                    ),
+                  ),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: _openEditStudentProfileModal,
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
                       ),
-                      SizedBox(height: 2),
-                      Text(
-                        'UPSC Civil Services Aspirant · Patna',
-                        style: TextStyle(fontSize: 12, color: AppColors.indigo200),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.edit_rounded, color: Colors.white, size: 16),
+                          SizedBox(width: 4),
+                          Text(
+                            'Edit',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 ],
               ),
@@ -2188,19 +2329,39 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'STUDENT PROFILE',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors.slate400,
-                        letterSpacing: 1,
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'STUDENT PROFILE',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.slate400,
+                            letterSpacing: 1,
+                          ),
+                        ),
+                        InkWell(
+                          onTap: _openEditStudentProfileModal,
+                          child: const Text(
+                            'Edit Info',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 14),
-                    _buildProfileRow('Mobile', '+91 98765 43210'),
-                    _buildProfileRow('Active Library', 'Achievers Study Hub (Desk #B-14)'),
-                    _buildProfileRow('Student ID', 'JODO-STU-8842'),
+                    _buildProfileRow('Full Name', _studentName),
+                    _buildProfileRow('Mobile', _studentPhone.isNotEmpty ? _studentPhone : '+91 98765 43210'),
+                    _buildProfileRow('Active Library', _activeLibrary),
+                    _buildProfileRow('Student ID', _studentCode),
+                    _buildProfileRow('Target Exam', _examCategory),
+                    _buildProfileRow('Emergency Contact', _emergencyContact.isNotEmpty ? _emergencyContact : 'Not specified'),
+                    _buildProfileRow('Gender', _gender),
                     _buildProfileRow('Status', 'Active Member', isStatus: true),
                   ],
                 ),
@@ -2216,6 +2377,211 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  void _openEditStudentProfileModal() {
+    final nameCtrl = TextEditingController(text: _studentName);
+    final emergencyCtrl = TextEditingController(text: _emergencyContact.replaceAll('+91', '').trim());
+    String selectedExam = _examCategory;
+    String selectedGender = 'Other';
+    final currentGenderLower = _gender.trim().toLowerCase();
+    if (currentGenderLower == 'male') {
+      selectedGender = 'Male';
+    } else if (currentGenderLower == 'female') {
+      selectedGender = 'Female';
+    } else {
+      selectedGender = 'Other';
+    }
+    bool isSaving = false;
+    String? nameError;
+    String? emergencyError;
+
+    final exams = [
+      'UPSC / Civil Services',
+      'JEE / Engineering',
+      'NEET / Medical',
+      'SSC / CGL / CHSL',
+      'Banking / IBPS',
+      'State PSC',
+      'Other / Self Study',
+    ];
+    if (!exams.contains(selectedExam)) {
+      exams.insert(0, selectedExam);
+    }
+
+    final genders = ['Male', 'Female', 'Other'];
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) {
+          return Dialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+            insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(22),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: const [
+                          Text(
+                            'STUDENT PROFILE',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.orange500,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                          Text(
+                            'Edit Your Profile',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.slate900,
+                            ),
+                          ),
+                        ],
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.of(ctx).pop(),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  FormFieldWidget(
+                    label: 'FULL NAME',
+                    placeholder: 'e.g. Aarav Kumar',
+                    controller: nameCtrl,
+                    errorText: nameError,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z\s]')),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownFieldWidget(
+                    label: 'TARGET EXAMINATION',
+                    value: selectedExam,
+                    items: exams,
+                    onChanged: (val) {
+                      if (val != null) setModalState(() => selectedExam = val);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  FormFieldWidget(
+                    label: 'EMERGENCY CONTACT',
+                    placeholder: '10-digit mobile number',
+                    prefix: '+91',
+                    controller: emergencyCtrl,
+                    errorText: emergencyError,
+                    keyboardType: TextInputType.phone,
+                    maxLength: 10,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(10),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownFieldWidget(
+                    label: 'GENDER',
+                    value: selectedGender,
+                    items: genders,
+                    onChanged: (val) {
+                      if (val != null) setModalState(() => selectedGender = val);
+                    },
+                  ),
+                  const SizedBox(height: 20),
+                  CustomButton(
+                    label: isSaving ? 'Saving Changes...' : 'Save Profile Changes',
+                    onPressed: isSaving
+                        ? null
+                        : () async {
+                            final name = nameCtrl.text.trim();
+                            final emergency = emergencyCtrl.text.trim();
+
+                            bool hasErr = false;
+                            String? nErr;
+                            String? eErr;
+
+                            if (name.length < 3) {
+                              nErr = 'Name must be at least 3 characters';
+                              hasErr = true;
+                            }
+                            if (emergency.isNotEmpty && !RegExp(r'^[6-9]\d{9}$').hasMatch(emergency)) {
+                              eErr = 'Enter a valid 10-digit emergency number';
+                              hasErr = true;
+                            }
+
+                            if (hasErr) {
+                              setModalState(() {
+                                nameError = nErr;
+                                emergencyError = eErr;
+                              });
+                              return;
+                            }
+
+                            setModalState(() => isSaving = true);
+
+                            final res = await ApiService.updateStudentProfile(
+                              fullName: name,
+                              examCategory: selectedExam,
+                              emergencyContact: emergency.isNotEmpty
+                                  ? emergency
+                                  : (_emergencyContact.isNotEmpty ? _emergencyContact : null),
+                              gender: selectedGender,
+                            );
+
+                            if (!mounted) return;
+
+                            if (res.success) {
+                              setState(() {
+                                _studentName = name;
+                                _examCategory = selectedExam;
+                                if (emergency.isNotEmpty) {
+                                  _emergencyContact = emergency;
+                                }
+                                _gender = selectedGender;
+                              });
+                              await AuthStorage.saveStudentProfile(
+                                studentCode: _studentCode,
+                                fullName: _studentName,
+                                examCategory: _examCategory,
+                                emergencyContact: _emergencyContact,
+                                gender: _gender,
+                              );
+                              if (!mounted) return;
+                              Navigator.of(ctx).pop();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Profile updated successfully! 🎉'),
+                                  backgroundColor: AppColors.secondary,
+                                ),
+                              );
+                            } else {
+                              setModalState(() => isSaving = false);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(res.message ?? 'Update failed'),
+                                  backgroundColor: AppColors.rose600,
+                                ),
+                              );
+                            }
+                          },
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -2475,8 +2841,8 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                 children: [
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Text(
+                    children: [
+                      const Text(
                         'LIBRARY GATE PASS',
                         style: TextStyle(
                           fontSize: 10,
@@ -2486,8 +2852,8 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                         ),
                       ),
                       Text(
-                        'Aarav Kumar',
-                        style: TextStyle(
+                        _studentName,
+                        style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w900,
                           color: AppColors.slate900,
