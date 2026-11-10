@@ -1,71 +1,50 @@
 import 'package:flutter/material.dart';
-import '../theme/app_theme.dart';
 
 class BrandLogo extends StatelessWidget {
   final bool compact;
   final bool inverse;
+  final double? height;
 
   const BrandLogo({
     super.key,
     this.compact = false,
     this.inverse = false,
+    this.height,
   });
 
   @override
   Widget build(BuildContext context) {
-    final double iconSize = compact ? 36.0 : 44.0;
-    final double fontSize = compact ? 18.0 : 22.0;
+    final double defaultHeight = compact ? 32.0 : 44.0;
+    final double effectiveHeight = height ?? defaultHeight;
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Container(
-          width: iconSize,
-          height: iconSize,
-          decoration: BoxDecoration(
-            color: inverse ? Colors.white : AppColors.indigo950,
-            borderRadius: BorderRadius.circular(compact ? 12 : 16),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.indigo950.withOpacity(0.15),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            'J',
-            style: TextStyle(
-              color: inverse ? AppColors.indigo950 : Colors.white,
-              fontWeight: FontWeight.w900,
-              fontSize: compact ? 18 : 22,
-            ),
-          ),
-        ),
-        const SizedBox(width: 10),
-        RichText(
-          text: TextSpan(
-            text: 'Jodo',
-            style: TextStyle(
-              fontSize: fontSize,
-              fontWeight: FontWeight.w900,
-              letterSpacing: -0.5,
-              color: inverse ? Colors.white : AppColors.slate900,
-            ),
-            children: const [
-              TextSpan(
-                text: '.',
-                style: TextStyle(
-                  color: AppColors.orange500,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
+    final logoImage = Image.asset(
+      'assets/images/logo.png',
+      height: effectiveHeight,
+      fit: BoxFit.contain,
+      filterQuality: FilterQuality.high,
     );
+
+    if (inverse) {
+      return Container(
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 10 : 14,
+          vertical: compact ? 4 : 6,
+        ),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(compact ? 10 : 14),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: logoImage,
+      );
+    }
+
+    return logoImage;
   }
 }

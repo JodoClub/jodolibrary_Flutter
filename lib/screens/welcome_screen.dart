@@ -19,7 +19,7 @@ class WelcomeScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const BrandLogo(),
+              const BrandLogo(height: 52),
               const SizedBox(height: 24),
 
               // Indigo Hero Card

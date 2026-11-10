@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/app_models.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/brand_logo.dart';
 import '../widgets/common_widgets.dart';
 import '../widgets/custom_button.dart';
 
@@ -125,6 +126,8 @@ class _OTPScreenState extends State<OTPScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    const BrandLogo(height: 38),
+                    const SizedBox(height: 20),
                     Container(
                       width: 56,
                       height: 56,
