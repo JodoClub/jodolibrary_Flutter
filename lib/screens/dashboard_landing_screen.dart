@@ -1,23 +1,66 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/app_models.dart';
 import '../theme/app_theme.dart';
 import '../widgets/brand_logo.dart';
 
-class DashboardLandingScreen extends StatelessWidget {
+class DashboardLandingScreen extends StatefulWidget {
   final UserRole role;
   final VoidCallback onContinue;
-  final VoidCallback onRestart;
+  final VoidCallback? onRestart;
 
   const DashboardLandingScreen({
     super.key,
     required this.role,
     required this.onContinue,
-    required this.onRestart,
+    this.onRestart,
   });
 
   @override
+  State<DashboardLandingScreen> createState() => _DashboardLandingScreenState();
+}
+
+class _DashboardLandingScreenState extends State<DashboardLandingScreen> {
+  int _secondsRemaining = 3;
+  Timer? _timer;
+  bool _navigated = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _startCountdown();
+  }
+
+  void _startCountdown() {
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      if (_secondsRemaining > 1) {
+        setState(() {
+          _secondsRemaining--;
+        });
+      } else {
+        _timer?.cancel();
+        _navigateHome();
+      }
+    });
+  }
+
+  void _navigateHome() {
+    if (_navigated) return;
+    _navigated = true;
+    _timer?.cancel();
+    widget.onContinue();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final isAdmin = role == UserRole.admin;
+    final isAdmin = widget.role == UserRole.admin;
 
     return Scaffold(
       backgroundColor: AppColors.slate50,
@@ -82,7 +125,7 @@ class DashboardLandingScreen extends StatelessWidget {
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: AppColors.orange500.withOpacity(0.35),
+                            color: AppColors.orange500.withValues(alpha: 0.35),
                             blurRadius: 8,
                             offset: const Offset(0, 3),
                           ),
@@ -128,7 +171,7 @@ class DashboardLandingScreen extends StatelessWidget {
               Text(
                 isAdmin
                     ? 'Your library workspace\nis ready.'
-                    : 'You’re ready to find\nyour study space.',
+                    : 'Your study workspace\nis ready.',
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontSize: 28,
@@ -142,7 +185,7 @@ class DashboardLandingScreen extends StatelessWidget {
               Text(
                 isAdmin
                     ? 'Welcome to jodolibrary Partner. Your dashboard is ready for you to start managing your library.'
-                    : 'Welcome to jodolibrary. Your personalized dashboard is ready.',
+                    : 'Welcome to jodolibrary. Your personalized student dashboard is ready.',
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontSize: 14,
@@ -150,12 +193,48 @@ class DashboardLandingScreen extends StatelessWidget {
                   height: 1.5,
                 ),
               ),
-              const SizedBox(height: 36),
+              const SizedBox(height: 24),
 
-              // Big Portal Entry Card
+              // 3-second Auto Navigation Countdown Badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        value: _secondsRemaining / 3.0,
+                        valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primary),
+                        backgroundColor: AppColors.slate200,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Redirecting to home in ${_secondsRemaining}s...',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.primary,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Big Portal Entry Card (tap to enter immediately)
               InkWell(
                 borderRadius: BorderRadius.circular(24),
-                onTap: onContinue,
+                onTap: _navigateHome,
                 child: Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
@@ -164,7 +243,7 @@ class DashboardLandingScreen extends StatelessWidget {
                     border: Border.all(color: AppColors.slate200),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.04),
+                        color: Colors.black.withValues(alpha: 0.04),
                         blurRadius: 15,
                         offset: const Offset(0, 5),
                       ),
@@ -192,7 +271,7 @@ class DashboardLandingScreen extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              isAdmin ? 'Partner Portal' : 'Student Experience',
+                              isAdmin ? 'Partner Dashboard' : 'Student Dashboard',
                               style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w900,
@@ -210,23 +289,50 @@ class DashboardLandingScreen extends StatelessWidget {
                           ],
                         ),
                       ),
-                      const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.slate400),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: AppColors.slate100,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Enter Now',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.slate700,
+                              ),
+                            ),
+                            SizedBox(width: 4),
+                            Icon(Icons.arrow_forward_ios, size: 12, color: AppColors.slate600),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
               ),
 
               const Spacer(),
-              TextButton(
-                onPressed: onRestart,
-                child: const Text(
-                  'Restart prototype flow',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.orange500,
+
+              // Real App Production Security Footer
+              const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.lock_outline, size: 13, color: AppColors.slate400),
+                  SizedBox(width: 6),
+                  Text(
+                    'Secured by Jodo Library Platform',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.slate400,
+                    ),
                   ),
-                ),
+                ],
               ),
             ],
           ),
