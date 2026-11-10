@@ -131,7 +131,7 @@ class WelcomeScreen extends StatelessWidget {
               const SizedBox(height: 16),
               const Center(
                 child: Text(
-                  'By continuing, you agree to Jodo’s Terms of Service and Privacy Policy.',
+                  'By continuing, you agree to jodolibrary’s Terms of Service and Privacy Policy.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 10,

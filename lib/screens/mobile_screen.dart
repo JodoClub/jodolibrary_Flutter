@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/app_models.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
@@ -25,6 +26,7 @@ class MobileScreen extends StatefulWidget {
 class _MobileScreenState extends State<MobileScreen> {
   final TextEditingController _phoneController = TextEditingController();
   bool _isLoading = false;
+  String? _phoneError;
 
   @override
   void dispose() {
@@ -32,19 +34,32 @@ class _MobileScreenState extends State<MobileScreen> {
     super.dispose();
   }
 
+  String? _validatePhone(String val) {
+    final clean = val.trim();
+    if (clean.isEmpty) {
+      return 'Mobile number is required';
+    }
+    if (clean.length < 10) {
+      return 'Mobile number must be exactly 10 digits (currently ${clean.length})';
+    }
+    if (!RegExp(r'^[6-9]\d{9}$').hasMatch(clean)) {
+      return 'Please enter a valid 10-digit number starting with 6, 7, 8, or 9';
+    }
+    return null;
+  }
+
   Future<void> _handleGetOtp() async {
     final phone = _phoneController.text.trim();
-    if (phone.length != 10 || !RegExp(r'^\d{10}$').hasMatch(phone)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter a valid 10-digit mobile number'),
-          backgroundColor: AppColors.orange500,
-        ),
-      );
+    final err = _validatePhone(phone);
+    if (err != null) {
+      setState(() => _phoneError = err);
       return;
     }
 
-    setState(() => _isLoading = true);
+    setState(() {
+      _phoneError = null;
+      _isLoading = true;
+    });
 
     try {
       final res = await ApiService.sendOtp(mobile: phone, role: widget.role);
@@ -58,28 +73,39 @@ class _MobileScreenState extends State<MobileScreen> {
             content: Text(devOtp != null
                 ? 'OTP sent! Test OTP is: $devOtp'
                 : 'OTP sent to +91 $phone'),
-            backgroundColor: AppColors.emerald600,
+            backgroundColor: AppColors.secondary,
           ),
         );
+        // Only move to next screen on success!
+        widget.onContinue(phone);
       } else {
+        setState(() => _phoneError = res.message ?? 'Failed to send OTP. Please check your number.');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(res.message ?? 'Server notice: proceeding in offline mode'),
-            backgroundColor: AppColors.indigo800,
+            content: Text(res.message ?? 'Failed to send OTP. Please check your number.'),
+            backgroundColor: AppColors.rose600,
           ),
         );
       }
     } catch (_) {
       if (!mounted) return;
-      setState(() => _isLoading = false);
+      setState(() {
+        _isLoading = false;
+        _phoneError = 'Connection failed. Please check network and retry.';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Connection failed. Please retry.'),
+          backgroundColor: AppColors.rose600,
+        ),
+      );
     }
-
-    widget.onContinue(phone);
   }
 
   @override
   Widget build(BuildContext context) {
     final isAdmin = widget.role == UserRole.admin;
+    final hasError = _phoneError != null && _phoneError!.isNotEmpty;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -106,7 +132,7 @@ class _MobileScreenState extends State<MobileScreen> {
                       child: Icon(
                         isAdmin ? Icons.apartment : Icons.school,
                         size: 28,
-                        color: AppColors.indigo950,
+                        color: AppColors.primary,
                       ),
                     ),
                     const SizedBox(height: 24),
@@ -131,13 +157,13 @@ class _MobileScreenState extends State<MobileScreen> {
                     ),
                     const SizedBox(height: 36),
 
-                    // Phone input
-                    const Text(
+                    // Phone input label
+                    Text(
                       'Mobile number',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w800,
-                        color: AppColors.slate700,
+                        color: hasError ? AppColors.rose600 : AppColors.slate700,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -145,14 +171,30 @@ class _MobileScreenState extends State<MobileScreen> {
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: AppColors.slate200, width: 1.5),
+                        border: Border.all(
+                          color: hasError ? AppColors.rose500 : AppColors.slate200,
+                          width: hasError ? 1.5 : 1.2,
+                        ),
+                        boxShadow: hasError
+                            ? [
+                                BoxShadow(
+                                  color: AppColors.rose500.withOpacity(0.12),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ]
+                            : null,
                       ),
                       child: Row(
                         children: [
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                            decoration: const BoxDecoration(
-                              border: Border(right: BorderSide(color: AppColors.slate200)),
+                            decoration: BoxDecoration(
+                              border: Border(
+                                right: BorderSide(
+                                  color: hasError ? AppColors.rose500.withOpacity(0.3) : AppColors.slate200,
+                                ),
+                              ),
                             ),
                             child: const Text(
                               '+91',
@@ -168,7 +210,16 @@ class _MobileScreenState extends State<MobileScreen> {
                               controller: _phoneController,
                               autofocus: true,
                               keyboardType: TextInputType.phone,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly,
+                                LengthLimitingTextInputFormatter(10),
+                              ],
                               maxLength: 10,
+                              onChanged: (val) {
+                                if (_phoneError != null) {
+                                  setState(() => _phoneError = null);
+                                }
+                              },
                               style: const TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.w900,
@@ -187,9 +238,34 @@ class _MobileScreenState extends State<MobileScreen> {
                               ),
                             ),
                           ),
+                          if (_phoneController.text.length == 10 && RegExp(r'^[6-9]\d{9}$').hasMatch(_phoneController.text))
+                            const Padding(
+                              padding: EdgeInsets.only(right: 14),
+                              child: Icon(Icons.check_circle_rounded, color: AppColors.secondary, size: 22),
+                            ),
                         ],
                       ),
                     ),
+
+                    if (hasError) ...[
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          const Icon(Icons.error_outline_rounded, size: 14, color: AppColors.rose600),
+                          const SizedBox(width: 5),
+                          Expanded(
+                            child: Text(
+                              _phoneError!,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.rose600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
 
                     const SizedBox(height: 24),
                     CustomButton(
@@ -218,16 +294,30 @@ class _MobileScreenState extends State<MobileScreen> {
                       child: const Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(Icons.shield, color: AppColors.emerald600, size: 18),
-                          SizedBox(width: 10),
+                          Icon(Icons.shield, color: AppColors.secondary, size: 18),
+                          SizedBox(width: 12),
                           Expanded(
-                            child: Text(
-                              'Your number is private and only used for account access and important updates.',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: AppColors.slate500,
-                                height: 1.4,
-                              ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Protected & Private',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.slate800,
+                                  ),
+                                ),
+                                SizedBox(height: 2),
+                                Text(
+                                  'We never share your phone number. It is exclusively used for secure biometric and OTP authentication.',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.slate500,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],

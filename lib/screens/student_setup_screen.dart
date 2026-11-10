@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common_widgets.dart';
@@ -19,11 +20,27 @@ class StudentSetupScreen extends StatefulWidget {
 }
 
 class _StudentSetupScreenState extends State<StudentSetupScreen> {
-  final TextEditingController _fullNameController = TextEditingController(text: 'Aarav Kumar');
-  final TextEditingController _emergencyContactController = TextEditingController(text: '9876543210');
+  final TextEditingController _fullNameController = TextEditingController();
+  final TextEditingController _emergencyContactController = TextEditingController();
+
   String _selectedExam = 'UPSC';
-  String _selectedGender = 'Female';
+  String _selectedGender = 'Male';
+  DateTime _dob = DateTime(2002, 5, 15);
   bool _isLoading = false;
+
+  String? _nameError;
+  String? _emergencyError;
+
+  final List<String> _exams = const [
+    'UPSC',
+    'BPSC / State PSC',
+    'SSC CGL / CHSL',
+    'Banking / IBPS',
+    'CA / CS',
+    'NEET / JEE',
+    'Law / CLAT',
+    'Other Competitive',
+  ];
 
   @override
   void dispose() {
@@ -32,19 +49,57 @@ class _StudentSetupScreenState extends State<StudentSetupScreen> {
     super.dispose();
   }
 
-  Future<void> _handleSubmit() async {
+  bool _validateForm() {
+    bool isValid = true;
     final name = _fullNameController.text.trim();
     final emergency = _emergencyContactController.text.trim();
 
-    if (name.isEmpty || emergency.isEmpty) {
+    setState(() {
+      // 1. Full Name Validation
+      if (name.isEmpty) {
+        _nameError = 'Full name is required';
+        isValid = false;
+      } else if (name.length < 3) {
+        _nameError = 'Name must be at least 3 characters long';
+        isValid = false;
+      } else if (!RegExp(r"^[a-zA-Z\s\.]+$").hasMatch(name)) {
+        _nameError = 'Name must only contain letters and spaces';
+        isValid = false;
+      } else {
+        _nameError = null;
+      }
+
+      // 2. Emergency Contact Validation
+      if (emergency.isEmpty) {
+        _emergencyError = 'Emergency contact is required';
+        isValid = false;
+      } else if (emergency.length != 10) {
+        _emergencyError = 'Mobile number must be exactly 10 digits';
+        isValid = false;
+      } else if (!RegExp(r'^[6-9]\d{9}$').hasMatch(emergency)) {
+        _emergencyError = 'Number must start with 6, 7, 8, or 9';
+        isValid = false;
+      } else {
+        _emergencyError = null;
+      }
+    });
+
+    return isValid;
+  }
+
+  Future<void> _handleSubmit() async {
+    if (!_validateForm()) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please enter your full name and emergency contact'),
-          backgroundColor: AppColors.orange500,
+          content: Text('Please correct the highlighted form errors'),
+          backgroundColor: AppColors.rose600,
         ),
       );
       return;
     }
+
+    final name = _fullNameController.text.trim();
+    final emergency = _emergencyContactController.text.trim();
 
     setState(() => _isLoading = true);
 
@@ -63,16 +118,28 @@ class _StudentSetupScreenState extends State<StudentSetupScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Profile setup completed! 🎓'),
-            backgroundColor: AppColors.emerald600,
+            backgroundColor: AppColors.secondary,
+          ),
+        );
+        widget.onComplete();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(res.message ?? 'Setup failed. Please try again.'),
+            backgroundColor: AppColors.rose600,
           ),
         );
       }
     } catch (_) {
       if (!mounted) return;
       setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Connection failed. Please check your internet.'),
+          backgroundColor: AppColors.rose600,
+        ),
+      );
     }
-
-    widget.onComplete();
   }
 
   @override
@@ -89,9 +156,9 @@ class _StudentSetupScreenState extends State<StudentSetupScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Center(
+                    const Center(
                       child: Column(
-                        children: const [
+                        children: [
                           PhotoUploadWidget(isStudent: true),
                           SizedBox(height: 12),
                           Text(
@@ -99,12 +166,12 @@ class _StudentSetupScreenState extends State<StudentSetupScreen> {
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w800,
-                              color: AppColors.indigo950,
+                              color: AppColors.slate900,
                             ),
                           ),
                           SizedBox(height: 4),
                           Text(
-                            'Used for safe library check-in',
+                            'Used for safe biometric & library check-in',
                             style: TextStyle(
                               fontSize: 10,
                               color: AppColors.slate400,
@@ -125,7 +192,7 @@ class _StudentSetupScreenState extends State<StudentSetupScreen> {
                     ),
                     const SizedBox(height: 6),
                     const Text(
-                      'This helps libraries prepare the right study experience.',
+                      'This helps libraries prepare the right study environment and quiet zones.',
                       style: TextStyle(
                         fontSize: 13,
                         color: AppColors.slate500,
@@ -136,35 +203,63 @@ class _StudentSetupScreenState extends State<StudentSetupScreen> {
 
                     FormFieldWidget(
                       controller: _fullNameController,
-                      label: 'Full name',
-                      placeholder: 'Enter your full name',
+                      label: 'Student Full Name *',
+                      placeholder: 'e.g. Aarav Kumar',
+                      errorText: _nameError,
+                      onChanged: (val) {
+                        if (_nameError != null) setState(() => _nameError = null);
+                      },
                     ),
                     const SizedBox(height: 18),
-                    SelectorWidget(
-                      label: 'Exam category',
-                      items: const ['UPSC', 'SSC', 'Banking', 'CA', 'Other'],
+
+                    DropdownFieldWidget(
+                      label: 'Target Exam / Preparation *',
                       value: _selectedExam,
-                      onChanged: (val) => setState(() => _selectedExam = val),
+                      items: _exams,
+                      onChanged: (val) {
+                        if (val != null) setState(() => _selectedExam = val);
+                      },
                     ),
                     const SizedBox(height: 18),
+
+                    DateFieldWidget(
+                      label: 'Date of Birth *',
+                      selectedDate: _dob,
+                      firstDate: DateTime(1980),
+                      lastDate: DateTime.now(),
+                      onDateSelected: (date) {
+                        setState(() => _dob = date);
+                      },
+                    ),
+                    const SizedBox(height: 18),
+
                     FormFieldWidget(
                       controller: _emergencyContactController,
-                      label: 'Emergency contact number',
+                      label: 'Emergency / Guardian Contact *',
                       placeholder: '98765 43210',
                       prefix: '+91',
                       keyboardType: TextInputType.phone,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(10),
+                      ],
+                      errorText: _emergencyError,
+                      onChanged: (val) {
+                        if (_emergencyError != null) setState(() => _emergencyError = null);
+                      },
                     ),
                     const SizedBox(height: 18),
+
                     SelectorWidget(
-                      label: 'Gender',
-                      items: const ['Female', 'Male', 'Other'],
+                      label: 'Gender *',
+                      items: const ['Male', 'Female', 'Other'],
                       value: _selectedGender,
                       onChanged: (val) => setState(() => _selectedGender = val),
                     ),
 
                     const SizedBox(height: 32),
                     CustomButton(
-                      label: _isLoading ? 'Saving...' : 'Save Profile',
+                      label: _isLoading ? 'Saving profile...' : 'Save & Continue',
                       trailing: _isLoading
                           ? const SizedBox(
                               width: 16,

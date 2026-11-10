@@ -141,8 +141,8 @@ class DashboardLandingScreen extends StatelessWidget {
               const SizedBox(height: 14),
               Text(
                 isAdmin
-                    ? 'Welcome to Jodo Partner. Your dashboard is ready for you to start managing your library.'
-                    : 'Welcome to Jodo Library. Your personalized dashboard is ready.',
+                    ? 'Welcome to jodolibrary Partner. Your dashboard is ready for you to start managing your library.'
+                    : 'Welcome to jodolibrary. Your personalized dashboard is ready.',
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontSize: 14,

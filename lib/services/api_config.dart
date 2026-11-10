@@ -1,6 +1,3 @@
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
-
 /// Configuration for Jodo Library Backend API
 class ApiConfig {
   /// Base API URL pointing to the Spring Boot backend

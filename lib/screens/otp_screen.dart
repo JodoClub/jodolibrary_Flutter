@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/app_models.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
@@ -15,7 +16,7 @@ class OTPScreen extends StatefulWidget {
   const OTPScreen({
     super.key,
     required this.role,
-    this.phone = '9876543210',
+    required this.phone,
     required this.onBack,
     required this.onVerify,
   });
@@ -25,20 +26,11 @@ class OTPScreen extends StatefulWidget {
 }
 
 class _OTPScreenState extends State<OTPScreen> {
-  AccountType _accountType = AccountType.firstTime;
   final List<TextEditingController> _controllers = List.generate(4, (_) => TextEditingController());
   final List<FocusNode> _focusNodes = List.generate(4, (_) => FocusNode());
   bool _isLoading = false;
-
-  @override
-  void initState() {
-    super.initState();
-    // Pre-fill universal test OTP "4321" for convenience
-    const devOtp = '4321';
-    for (int i = 0; i < 4; i++) {
-      _controllers[i].text = devOtp[i];
-    }
-  }
+  bool _isResending = false;
+  String? _otpError;
 
   @override
   void dispose() {
@@ -56,16 +48,14 @@ class _OTPScreenState extends State<OTPScreen> {
   Future<void> _handleVerify() async {
     final code = _otpCode;
     if (code.length != 4) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter all 4 digits'),
-          backgroundColor: AppColors.orange500,
-        ),
-      );
+      setState(() => _otpError = 'Please enter all 4 digits of the OTP');
       return;
     }
 
-    setState(() => _isLoading = true);
+    setState(() {
+      _otpError = null;
+      _isLoading = true;
+    });
 
     try {
       final res = await ApiService.verifyOtp(
@@ -84,32 +74,81 @@ class _OTPScreenState extends State<OTPScreen> {
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(isReturning ? 'Welcome back!' : 'Verified! Completing setup...'),
-            backgroundColor: AppColors.emerald600,
+            content: Text(isReturning ? 'Welcome back! Logging in...' : 'Verified! Completing profile...'),
+            backgroundColor: AppColors.secondary,
           ),
         );
+        // ONLY navigate on verified success!
         widget.onVerify(resolvedType);
         return;
       } else {
+        // STRICT VALIDATION: OTP failed - DO NOT move to next screen!
+        setState(() {
+          _otpError = res.message ?? 'Invalid OTP code. Please enter the correct code.';
+          for (var c in _controllers) {
+            c.clear();
+          }
+        });
+        _focusNodes[0].requestFocus();
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(res.message ?? 'Invalid OTP code. Using prototype fallback.'),
-            backgroundColor: AppColors.orange500,
+            content: Text(_otpError!),
+            backgroundColor: AppColors.rose600,
+          ),
+        );
+        return;
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _otpError = 'Verification failed. Please check network and retry.';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_otpError!),
+          backgroundColor: AppColors.rose600,
+        ),
+      );
+      return;
+    }
+  }
+
+  Future<void> _handleResendOtp() async {
+    if (_isResending) return;
+    setState(() => _isResending = true);
+
+    try {
+      final res = await ApiService.sendOtp(mobile: widget.phone, role: widget.role);
+      if (!mounted) return;
+      setState(() => _isResending = false);
+
+      if (res.success) {
+        final devOtp = res.data?['devOtp'];
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(devOtp != null ? 'New OTP sent! Code: $devOtp' : 'OTP resent to +91 ${widget.phone}'),
+            backgroundColor: AppColors.secondary,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(res.message ?? 'Could not resend OTP. Please wait a moment.'),
+            backgroundColor: AppColors.rose600,
           ),
         );
       }
     } catch (_) {
       if (!mounted) return;
-      setState(() => _isLoading = false);
+      setState(() => _isResending = false);
     }
-
-    // Offline / Prototype fallback
-    widget.onVerify(_accountType);
   }
 
   @override
   Widget build(BuildContext context) {
-    final isAdmin = widget.role == UserRole.admin;
+    final hasError = _otpError != null && _otpError!.isNotEmpty;
     final displayPhone = widget.phone.length == 10
         ? '+91 ${widget.phone.substring(0, 5)} ${widget.phone.substring(5)}'
         : '+91 ${widget.phone}';
@@ -132,11 +171,15 @@ class _OTPScreenState extends State<OTPScreen> {
                       width: 56,
                       height: 56,
                       decoration: BoxDecoration(
-                        color: AppColors.orange50,
+                        color: hasError ? AppColors.rose100 : AppColors.indigo50,
                         borderRadius: BorderRadius.circular(18),
                       ),
                       alignment: Alignment.center,
-                      child: const Icon(Icons.lock_outline, size: 28, color: AppColors.orange500),
+                      child: Icon(
+                        hasError ? Icons.lock_clock_outlined : Icons.lock_outline,
+                        size: 28,
+                        color: hasError ? AppColors.rose600 : AppColors.primary,
+                      ),
                     ),
                     const SizedBox(height: 24),
                     const Text(
@@ -169,20 +212,22 @@ class _OTPScreenState extends State<OTPScreen> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
-                        color: AppColors.emerald50,
+                        color: AppColors.secondaryLight,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppColors.emerald600.withOpacity(0.2)),
+                        border: Border.all(color: AppColors.secondary.withOpacity(0.3)),
                       ),
                       child: const Row(
                         children: [
-                          Icon(Icons.info_outline, size: 16, color: AppColors.emerald600),
+                          Icon(Icons.info_outline, size: 16, color: AppColors.secondary),
                           SizedBox(width: 8),
-                          Text(
-                            'Dev mode: Universal test OTP is 4321',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: AppColors.emerald600,
-                              fontWeight: FontWeight.w700,
+                          Expanded(
+                            child: Text(
+                              'Test Mode Active: Universal testing OTP is 4321',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.secondaryDark,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ),
                         ],
@@ -195,12 +240,30 @@ class _OTPScreenState extends State<OTPScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: List.generate(4, (index) {
                         return Container(
-                          width: 64,
-                          height: 64,
+                          width: 68,
+                          height: 68,
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(18),
-                            border: Border.all(color: AppColors.slate200, width: 1.5),
+                            border: Border.all(
+                              color: hasError ? AppColors.rose500 : AppColors.slate200,
+                              width: hasError ? 2.0 : 1.5,
+                            ),
+                            boxShadow: hasError
+                                ? [
+                                    BoxShadow(
+                                      color: AppColors.rose500.withOpacity(0.15),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ]
+                                : [
+                                    BoxShadow(
+                                      color: AppColors.slate200.withOpacity(0.5),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
                           ),
                           alignment: Alignment.center,
                           child: TextField(
@@ -209,16 +272,23 @@ class _OTPScreenState extends State<OTPScreen> {
                             keyboardType: TextInputType.number,
                             textAlign: TextAlign.center,
                             maxLength: 1,
-                            style: const TextStyle(
-                              fontSize: 24,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                              LengthLimitingTextInputFormatter(1),
+                            ],
+                            style: TextStyle(
+                              fontSize: 26,
                               fontWeight: FontWeight.w900,
-                              color: AppColors.indigo950,
+                              color: hasError ? AppColors.rose600 : AppColors.slate900,
                             ),
                             decoration: const InputDecoration(
                               counterText: '',
                               border: InputBorder.none,
                             ),
                             onChanged: (val) {
+                              if (_otpError != null) {
+                                setState(() => _otpError = null);
+                              }
                               if (val.isNotEmpty && index < 3) {
                                 _focusNodes[index + 1].requestFocus();
                               } else if (val.isEmpty && index > 0) {
@@ -230,16 +300,41 @@ class _OTPScreenState extends State<OTPScreen> {
                       }),
                     ),
 
+                    if (hasError) ...[
+                      const SizedBox(height: 10),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.error_outline_rounded, size: 14, color: AppColors.rose600),
+                          const SizedBox(width: 5),
+                          Flexible(
+                            child: Text(
+                              _otpError!,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.rose600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+
                     const SizedBox(height: 20),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
-                          'Resend code in 00:24',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.orange500,
+                        InkWell(
+                          onTap: _isResending ? null : _handleResendOtp,
+                          child: Text(
+                            _isResending ? 'Sending...' : 'Resend OTP Code',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.primary,
+                            ),
                           ),
                         ),
                         InkWell(
@@ -248,129 +343,32 @@ class _OTPScreenState extends State<OTPScreen> {
                             for (int i = 0; i < 4; i++) {
                               _controllers[i].text = devOtp[i];
                             }
+                            if (_otpError != null) {
+                              setState(() => _otpError = null);
+                            }
                           },
-                          child: const Text(
-                            'Fill 4321',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.indigo800,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: AppColors.indigo50,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Text(
+                              'Auto-fill 4321',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.primary,
+                              ),
                             ),
                           ),
                         ),
                       ],
                     ),
+
                     const SizedBox(height: 32),
-
-                    // Prototype Testing Card (kept for offline tests)
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: AppColors.indigo50.withOpacity(0.7),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: AppColors.indigo200),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'PROTOTYPE FALLBACK ROUTE',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w900,
-                              color: AppColors.indigo800,
-                              letterSpacing: 1.2,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          const Text(
-                            'Active if backend is unreachable:',
-                            style: TextStyle(fontSize: 12, color: AppColors.slate500),
-                          ),
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: InkWell(
-                                  borderRadius: BorderRadius.circular(14),
-                                  onTap: () => setState(() => _accountType = AccountType.firstTime),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(vertical: 12),
-                                    decoration: BoxDecoration(
-                                      color: _accountType == AccountType.firstTime
-                                          ? AppColors.indigo950
-                                          : Colors.white,
-                                      borderRadius: BorderRadius.circular(14),
-                                    ),
-                                    alignment: Alignment.center,
-                                    child: Text(
-                                      'First-time user',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w800,
-                                        color: _accountType == AccountType.firstTime
-                                            ? Colors.white
-                                            : AppColors.slate500,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: InkWell(
-                                  borderRadius: BorderRadius.circular(14),
-                                  onTap: () => setState(() => _accountType = AccountType.returning),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(vertical: 12),
-                                    decoration: BoxDecoration(
-                                      color: _accountType == AccountType.returning
-                                          ? AppColors.indigo950
-                                          : Colors.white,
-                                      borderRadius: BorderRadius.circular(14),
-                                    ),
-                                    alignment: Alignment.center,
-                                    child: Text(
-                                      'Returning user',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w800,
-                                        color: _accountType == AccountType.returning
-                                            ? Colors.white
-                                            : AppColors.slate500,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              Icon(
-                                isAdmin ? Icons.apartment : Icons.school,
-                                size: 14,
-                                color: AppColors.indigo800,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                '${isAdmin ? "ADMIN" : "STUDENT"} → ${_accountType == AccountType.firstTime ? "Profile setup" : "Dashboard landing"}',
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppColors.indigo800,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 28),
                     CustomButton(
-                      label: _isLoading ? 'Verifying...' : 'Verify & Continue',
+                      label: _isLoading ? 'Verifying OTP...' : 'Verify & Continue',
                       trailing: _isLoading
                           ? const SizedBox(
                               width: 16,

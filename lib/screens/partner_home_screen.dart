@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/app_models.dart';
 import '../theme/app_theme.dart';
 import '../widgets/brand_logo.dart';
 import '../widgets/custom_button.dart';
 import '../widgets/qr_code_widget.dart';
+import '../widgets/common_widgets.dart';
 
 class PartnerHomeScreen extends StatefulWidget {
   final VoidCallback onLogout;
@@ -1530,121 +1532,241 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
   void _openAddMemberModal() {
     final nameCtrl = TextEditingController();
     final phoneCtrl = TextEditingController();
-    final seatCtrl = TextEditingController(text: 'Seat #49');
+    String? selectedDesk = 'Seat #B-15';
+    String? selectedPlan = 'Full Day Dedicated (₹1,499/mo)';
+    DateTime? selectedDate = DateTime.now();
+
+    String? nameError;
+    String? phoneError;
+    String? deskError;
+    String? planError;
+    String? dateError;
+
+    final deskOptions = [
+      'Seat #A-01',
+      'Seat #A-02',
+      'Seat #A-05',
+      'Seat #B-15',
+      'Seat #B-16',
+      'Seat #C-01',
+      'Seat #C-05',
+      'Seat #D-08',
+      'Seat #D-12',
+    ];
+
+    final planOptions = [
+      'Full Day Dedicated (₹1,499/mo)',
+      'Morning Shift (₹899/mo)',
+      'Evening Shift (₹899/mo)',
+      'Night Owl Shift (₹999/mo)',
+      '24x7 Dedicated (₹1,999/mo)',
+    ];
 
     showDialog(
       context: context,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        child: Padding(
-          padding: const EdgeInsets.all(22),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) {
+          return Dialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+            insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(22),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Text(
-                        'ADMISSION',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w900,
-                          color: AppColors.orange500,
-                          letterSpacing: 1,
-                        ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: const [
+                          Text(
+                            'ADMISSION',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.orange500,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                          Text(
+                            'Add New Member',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.slate900,
+                            ),
+                          ),
+                        ],
                       ),
-                      Text(
-                        'Add New Member',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w900,
-                          color: AppColors.slate900,
-                        ),
+                      IconButton(
+                        onPressed: () => Navigator.of(ctx).pop(),
+                        icon: const Icon(Icons.close),
                       ),
                     ],
                   ),
-                  IconButton(
-                    onPressed: () => Navigator.of(ctx).pop(),
-                    icon: const Icon(Icons.close),
+                  const SizedBox(height: 16),
+                  FormFieldWidget(
+                    label: 'STUDENT FULL NAME',
+                    placeholder: 'e.g. Manisha Kumari',
+                    controller: nameCtrl,
+                    errorText: nameError,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z\s]')),
+                    ],
+                    onChanged: (val) {
+                      if (nameError != null) {
+                        setModalState(() => nameError = null);
+                      }
+                    },
                   ),
-                ],
-              ),
-              const SizedBox(height: 16),
+                  const SizedBox(height: 14),
+                  FormFieldWidget(
+                    label: 'MOBILE NUMBER',
+                    placeholder: '10-digit mobile number',
+                    prefix: '+91',
+                    keyboardType: TextInputType.phone,
+                    controller: phoneCtrl,
+                    maxLength: 10,
+                    errorText: phoneError,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(10),
+                    ],
+                    onChanged: (val) {
+                      if (phoneError != null) {
+                        setModalState(() => phoneError = null);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 14),
+                  DropdownFieldWidget(
+                    label: 'ASSIGN DESK',
+                    value: selectedDesk,
+                    items: deskOptions,
+                    errorText: deskError,
+                    hint: 'Select Desk',
+                    onChanged: (val) {
+                      setModalState(() {
+                        selectedDesk = val;
+                        deskError = null;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 14),
+                  DropdownFieldWidget(
+                    label: 'MEMBERSHIP PLAN',
+                    value: selectedPlan,
+                    items: planOptions,
+                    errorText: planError,
+                    hint: 'Select Plan',
+                    onChanged: (val) {
+                      setModalState(() {
+                        selectedPlan = val;
+                        planError = null;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 14),
+                  DateFieldWidget(
+                    label: 'JOINING DATE',
+                    selectedDate: selectedDate,
+                    errorText: dateError,
+                    placeholder: 'Select Joining Date',
+                    firstDate: DateTime.now().subtract(const Duration(days: 30)),
+                    lastDate: DateTime.now().add(const Duration(days: 90)),
+                    onDateSelected: (date) {
+                      setModalState(() {
+                        selectedDate = date;
+                        dateError = null;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 22),
+                  CustomButton(
+                    label: 'Register & Allocate Seat',
+                    onPressed: () {
+                      final name = nameCtrl.text.trim();
+                      final phone = phoneCtrl.text.trim();
 
-              TextField(
-                controller: nameCtrl,
-                decoration: InputDecoration(
-                  labelText: 'Student Full Name',
-                  hintText: 'e.g. Manisha Kumari',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: phoneCtrl,
-                keyboardType: TextInputType.phone,
-                decoration: InputDecoration(
-                  labelText: 'Mobile Number',
-                  hintText: '+91 98765 43210',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: seatCtrl,
-                      decoration: InputDecoration(
-                        labelText: 'Assign Desk',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: TextField(
-                      controller: TextEditingController(text: '₹1,499'),
-                      decoration: InputDecoration(
-                        labelText: 'Fee (Monthly)',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              CustomButton(
-                label: 'Register & Allocate Seat',
-                onPressed: () {
-                  if (nameCtrl.text.isNotEmpty) {
-                    setState(() {
-                      _members.insert(
-                        0,
-                        MemberInfo(
-                          name: nameCtrl.text,
-                          seat: seatCtrl.text,
-                          status: 'Present',
-                          plan: 'Full Day Dedicated',
-                          phone: phoneCtrl.text.isEmpty ? '+91 98765 00000' : phoneCtrl.text,
+                      bool hasError = false;
+                      String? newNameError;
+                      String? newPhoneError;
+                      String? newDeskError;
+                      String? newPlanError;
+                      String? newDateError;
+
+                      if (name.isEmpty) {
+                        newNameError = 'Student name is required';
+                        hasError = true;
+                      } else if (name.length < 3) {
+                        newNameError = 'Name must be at least 3 characters';
+                        hasError = true;
+                      }
+
+                      if (phone.isEmpty) {
+                        newPhoneError = 'Mobile number is required';
+                        hasError = true;
+                      } else if (!RegExp(r'^[6-9]\d{9}$').hasMatch(phone)) {
+                        newPhoneError = 'Enter a valid 10-digit mobile number';
+                        hasError = true;
+                      }
+
+                      if (selectedDesk == null || selectedDesk!.isEmpty) {
+                        newDeskError = 'Please assign a desk';
+                        hasError = true;
+                      }
+
+                      if (selectedPlan == null || selectedPlan!.isEmpty) {
+                        newPlanError = 'Please select a plan';
+                        hasError = true;
+                      }
+
+                      if (selectedDate == null) {
+                        newDateError = 'Please choose a joining date';
+                        hasError = true;
+                      }
+
+                      if (hasError) {
+                        setModalState(() {
+                          nameError = newNameError;
+                          phoneError = newPhoneError;
+                          deskError = newDeskError;
+                          planError = newPlanError;
+                          dateError = newDateError;
+                        });
+                        return; // DO NOT PROCEED
+                      }
+
+                      setState(() {
+                        _members.insert(
+                          0,
+                          MemberInfo(
+                            name: name,
+                            seat: selectedDesk!,
+                            status: 'Present',
+                            plan: selectedPlan!.split(' (')[0],
+                            phone: '+91 $phone',
+                          ),
+                        );
+                      });
+
+                      Navigator.of(ctx).pop();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Member $name registered successfully!'),
+                          backgroundColor: AppColors.emerald500,
+                          behavior: SnackBarBehavior.floating,
                         ),
                       );
-                    });
-                  }
-                  Navigator.of(ctx).pop();
-                },
+                    },
+                  ),
+                ],
               ),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
   }

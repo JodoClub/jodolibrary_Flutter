@@ -23,7 +23,7 @@ class JodoApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Jodo Library',
+      title: 'jodolibrary',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       home: const JodoRootFlow(),
