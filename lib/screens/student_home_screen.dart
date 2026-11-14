@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/app_models.dart';
+import '../models/library_business_model.dart';
 import '../services/api_service.dart';
 import '../services/auth_storage.dart';
 import '../theme/app_theme.dart';
@@ -8,6 +9,7 @@ import '../widgets/brand_logo.dart';
 import '../widgets/custom_button.dart';
 import '../widgets/qr_code_widget.dart';
 import '../widgets/common_widgets.dart';
+import 'library_details_screen.dart';
 
 class StudentHomeScreen extends StatefulWidget {
   final VoidCallback onLogout;
@@ -35,6 +37,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   String _gender = 'Other';
   String _studentCode = 'JODO-STU-8842';
   String _activeLibrary = 'Achievers Study Hub (Desk #B-14)';
+  LibraryBusinessModel? _activeLibraryModel;
 
   @override
   void initState() {
@@ -113,6 +116,16 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
           emergencyContact: _emergencyContact,
           gender: _gender,
         );
+      }
+    } catch (_) {}
+
+    try {
+      final libRes = await ApiService.getActiveLibraryDetails();
+      if (libRes.success && libRes.data != null && mounted) {
+        setState(() {
+          _activeLibraryModel = LibraryBusinessModel.fromJson(libRes.data!);
+          _activeLibrary = '${_activeLibraryModel!.displayName} (Desk #B-14)';
+        });
       }
     } catch (_) {}
   }
@@ -484,75 +497,91 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
               ),
               const SizedBox(height: 18),
 
-              // Library Status Chip
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.06),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: Colors.white.withOpacity(0.12)),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 32,
-                          height: 32,
-                          decoration: BoxDecoration(
-                            color: AppColors.orange500.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          alignment: Alignment.center,
-                          child: const Icon(Icons.apartment, color: AppColors.orange400, size: 18),
-                        ),
-                        const SizedBox(width: 10),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: const [
-                            Text(
-                              'Achievers Study Hub - Branch 1',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w900,
-                                fontSize: 12,
+              // Library Status Chip (Interactive Google Business Profile)
+              InkWell(
+                borderRadius: BorderRadius.circular(18),
+                onTap: _openActiveLibraryDetails,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: Colors.white.withOpacity(0.16)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 34,
+                              height: 34,
+                              decoration: BoxDecoration(
+                                color: AppColors.orange500.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(10),
                               ),
+                              alignment: Alignment.center,
+                              child: const Icon(Icons.apartment, color: AppColors.orange400, size: 18),
                             ),
-                            Text(
-                              'Boring Road · Desk Dedicated',
-                              style: TextStyle(
-                                color: AppColors.indigo300,
-                                fontSize: 10,
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _activeLibraryModel?.displayName ?? 'Achievers Study Hub - Branch 1',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 12,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  Text(
+                                    _activeLibraryModel != null
+                                        ? '${_activeLibraryModel!.area ?? _activeLibraryModel!.city} · ${_activeLibraryModel!.timing}'
+                                        : 'Boring Road · 24×7 Open',
+                                    style: const TextStyle(
+                                      color: AppColors.indigo300,
+                                      fontSize: 10,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
                               ),
                             ),
                           ],
                         ),
-                      ],
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: AppColors.emerald500.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(20),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: const [
-                          CircleAvatar(radius: 3, backgroundColor: AppColors.emerald400),
-                          SizedBox(width: 4),
-                          Text(
-                            'Active',
-                            style: TextStyle(
-                              color: AppColors.emerald300,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w800,
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppColors.orange500.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: AppColors.orange400.withOpacity(0.4)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Text(
+                              'Profile',
+                              style: TextStyle(
+                                color: AppColors.orange400,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
-                          ),
-                        ],
+                            SizedBox(width: 2),
+                            Icon(Icons.chevron_right, size: 12, color: AppColors.orange400),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -1814,8 +1843,11 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
               const SizedBox(height: 12),
 
               // Recommended Library Card
-              Container(
-                decoration: BoxDecoration(
+              InkWell(
+                borderRadius: BorderRadius.circular(24),
+                onTap: _openRecommendedLibraryDetails,
+                child: Container(
+                  decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(24),
                   border: Border.all(color: AppColors.slate200),
@@ -1949,6 +1981,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   ],
                 ),
               ),
+              ),
               const SizedBox(height: 24),
 
               // Nearby study spaces list
@@ -1958,55 +1991,59 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
               ),
               const SizedBox(height: 12),
               ...filtered.map((item) {
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: AppColors.slate200),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: AppColors.indigo50,
-                          borderRadius: BorderRadius.circular(14),
+                return InkWell(
+                  borderRadius: BorderRadius.circular(20),
+                  onTap: () => _openNearbyLibraryDetails(item[0], item[1]),
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppColors.slate200),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: AppColors.indigo50,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          alignment: Alignment.center,
+                          child: const Icon(Icons.apartment, color: AppColors.indigo950, size: 20),
                         ),
-                        alignment: Alignment.center,
-                        child: const Icon(Icons.apartment, color: AppColors.indigo950, size: 20),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              item[0],
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w900,
-                                color: AppColors.slate900,
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                item[0],
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w900,
+                                  color: AppColors.slate900,
+                                ),
                               ),
-                            ),
-                            Text(
-                              item[1],
-                              style: const TextStyle(fontSize: 11, color: AppColors.slate400),
-                            ),
-                          ],
+                              Text(
+                                item[1],
+                                style: const TextStyle(fontSize: 11, color: AppColors.slate400),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      Text(
-                        item[2],
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w900,
-                          color: AppColors.emerald600,
+                        Text(
+                          item[2],
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.emerald600,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 );
               }),
@@ -2357,12 +2394,141 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                     const SizedBox(height: 14),
                     _buildProfileRow('Full Name', _studentName),
                     _buildProfileRow('Mobile', _studentPhone.isNotEmpty ? _studentPhone : '+91 98765 43210'),
-                    _buildProfileRow('Active Library', _activeLibrary),
+                    _buildProfileRow('Active Library', _activeLibrary, onTap: _openActiveLibraryDetails),
                     _buildProfileRow('Student ID', _studentCode),
                     _buildProfileRow('Target Exam', _examCategory),
                     _buildProfileRow('Emergency Contact', _emergencyContact.isNotEmpty ? _emergencyContact : 'Not specified'),
                     _buildProfileRow('Gender', _gender),
                     _buildProfileRow('Status', 'Active Member', isStatus: true),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+
+              // Enrolled Library Card
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: AppColors.orange500.withOpacity(0.3)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.orange500.withOpacity(0.06),
+                      blurRadius: 14,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color: AppColors.orange500.withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              alignment: Alignment.center,
+                              child: const Icon(Icons.apartment, color: AppColors.orange500, size: 20),
+                            ),
+                            const SizedBox(width: 10),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: const [
+                                Text(
+                                  'MY ENROLLED LIBRARY',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w900,
+                                    color: AppColors.orange500,
+                                    letterSpacing: 1.1,
+                                  ),
+                                ),
+                                Text(
+                                  'Google Business Details',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.slate900,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: AppColors.emerald500.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              CircleAvatar(radius: 3, backgroundColor: AppColors.emerald500),
+                              SizedBox(width: 4),
+                              Text(
+                                'Enrolled',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors.emerald600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      _activeLibraryModel?.displayName ?? 'Achievers Study Hub - Branch 1',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.slate900,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _activeLibraryModel != null
+                          ? '${_activeLibraryModel!.address}, ${_activeLibraryModel!.city}'
+                          : 'Boring Road, Patna, Bihar',
+                      style: const TextStyle(fontSize: 11, color: AppColors.slate500),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        _buildStudentLibChip(
+                          Icons.schedule_outlined,
+                          _activeLibraryModel?.timing ?? '24×7 Open',
+                        ),
+                        _buildStudentLibChip(
+                          Icons.checklist_rounded,
+                          '${_activeLibraryModel?.amenities.length ?? 24} Facilities',
+                        ),
+                        _buildStudentLibChip(
+                          Icons.map_outlined,
+                          'Live Map Nav',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    CustomButton(
+                      label: 'View Photos, Map & All Facilities',
+                      leading: const Icon(Icons.storefront_rounded, size: 16),
+                      onPressed: _openActiveLibraryDetails,
+                    ),
                   ],
                 ),
               ),
@@ -2585,24 +2751,190 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
     );
   }
 
-  Widget _buildProfileRow(String label, String value, {bool isStatus = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+  Widget _buildStudentLibChip(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: AppColors.slate100,
+        borderRadius: BorderRadius.circular(10),
+      ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Text(label, style: const TextStyle(fontSize: 12, color: AppColors.slate400)),
+          Icon(icon, size: 12, color: AppColors.slate600),
+          const SizedBox(width: 4),
           Text(
-            value,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-              color: isStatus ? AppColors.emerald600 : AppColors.slate800,
+            label,
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: AppColors.slate700,
             ),
           ),
         ],
       ),
     );
+  }
+
+  void _openActiveLibraryDetails() {
+    final model = _activeLibraryModel ??
+        const LibraryBusinessModel(
+          id: '00000000-0000-0000-0000-00000000b001',
+          name: 'Achievers Study Hub',
+          branchName: 'Branch 1',
+          address: 'Boring Road, Patna, Bihar 800001',
+          area: 'Boring Road',
+          city: 'Patna',
+          totalSeats: 60,
+          rating: 4.9,
+          monthlyPrice: 1499,
+          photos: [
+            'https://images.unsplash.com/photo-1521587760476-6c12a4b040da?auto=format&fit=crop&w=1200&q=80',
+            'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?auto=format&fit=crop&w=1200&q=80',
+            'https://images.unsplash.com/photo-1568667256549-094345857637?auto=format&fit=crop&w=1200&q=80',
+            'https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?auto=format&fit=crop&w=1200&q=80',
+            'https://images.unsplash.com/photo-1507842229451-7f01be7fe880?auto=format&fit=crop&w=1200&q=80',
+          ],
+          googleMapsUrl: 'https://maps.google.com/?q=Boring+Road+Patna',
+          timing: '24 Hours Open (24×7)',
+          operatingDays: 'Mon - Sun (All 7 Days Open)',
+          contactPhone: '+91 98765 43210',
+          contactEmail: 'contact@achieversstudyhub.com',
+          websiteUrl: 'https://24sevenlibrary.in',
+          whatsappNumber: '+919876543210',
+          amenities: [
+            'wifi', 'ac', 'ro_water', 'power_backup', 'lockers', 'ergonomic_chairs',
+            'charging_points', 'cctv', 'biometric', 'open_24_7', 'silent_zone',
+            'dining_area', 'newspapers', 'book_bank', 'washrooms', 'two_wheeler_parking',
+            'four_wheeler_parking', 'discussion_room', 'tea_coffee', 'reserved_desk',
+            'fire_safety', 'printing', 'phone_booth', 'girls_section'
+          ],
+        );
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LibraryDetailsScreen(
+          libraryId: _activeLibraryModel?.id,
+          initialData: model,
+        ),
+      ),
+    );
+  }
+
+  void _openRecommendedLibraryDetails() {
+    const recommended = LibraryBusinessModel(
+      id: 'recommended-lib-1',
+      name: 'Saraswati Study Hub',
+      branchName: 'Main Campus',
+      address: 'Near Boring Road Crossing, Patna, Bihar 800001',
+      area: 'Boring Road',
+      city: 'Patna',
+      totalSeats: 80,
+      rating: 4.9,
+      monthlyPrice: 1499,
+      photos: [
+        'https://images.unsplash.com/photo-1762857995550-1fc51c8fbf2d?auto=format&fit=crop&w=1200&q=80',
+        'https://images.unsplash.com/photo-1521587760476-6c12a4b040da?auto=format&fit=crop&w=1200&q=80',
+        'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?auto=format&fit=crop&w=1200&q=80',
+        'https://images.unsplash.com/photo-1568667256549-094345857637?auto=format&fit=crop&w=1200&q=80',
+        'https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?auto=format&fit=crop&w=1200&q=80',
+      ],
+      googleMapsUrl: 'https://maps.google.com/?q=Boring+Road+Crossing+Patna',
+      timing: '24 Hours Open (24×7)',
+      operatingDays: 'Mon - Sun (All 7 Days Open)',
+      contactPhone: '+91 98765 43211',
+      contactEmail: 'info@saraswatistudyhub.com',
+      websiteUrl: 'https://24sevenlibrary.in/#facilities',
+      whatsappNumber: '+919876543211',
+      amenities: [
+        'wifi', 'ac', 'ro_water', 'power_backup', 'lockers', 'ergonomic_chairs',
+        'charging_points', 'cctv', 'biometric', 'open_24_7', 'silent_zone',
+        'dining_area', 'newspapers', 'washrooms', 'two_wheeler_parking', 'tea_coffee'
+      ],
+    );
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const LibraryDetailsScreen(
+          initialData: recommended,
+        ),
+      ),
+    );
+  }
+
+  void _openNearbyLibraryDetails(String name, String locationInfo) {
+    final nearby = LibraryBusinessModel(
+      id: 'nearby-${name.toLowerCase().replaceAll(RegExp(r'\s+'), '-')}',
+      name: name,
+      address: '$locationInfo, Patna',
+      city: 'Patna',
+      totalSeats: 50,
+      rating: 4.8,
+      monthlyPrice: 1299,
+      photos: const [
+        'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?auto=format&fit=crop&w=1200&q=80',
+        'https://images.unsplash.com/photo-1521587760476-6c12a4b040da?auto=format&fit=crop&w=1200&q=80',
+        'https://images.unsplash.com/photo-1568667256549-094345857637?auto=format&fit=crop&w=1200&q=80',
+        'https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?auto=format&fit=crop&w=1200&q=80',
+        'https://images.unsplash.com/photo-1507842229451-7f01be7fe880?auto=format&fit=crop&w=1200&q=80',
+      ],
+      googleMapsUrl: 'https://maps.google.com/?q=${Uri.encodeComponent('$name, Patna')}',
+      timing: '06:00 AM - 11:00 PM',
+      operatingDays: 'Mon - Sun (All 7 Days Open)',
+      contactPhone: '+91 98765 43212',
+      whatsappNumber: '+919876543212',
+      amenities: const [
+        'wifi', 'ac', 'ro_water', 'power_backup', 'lockers', 'ergonomic_chairs',
+        'charging_points', 'cctv', 'silent_zone', 'washrooms'
+      ],
+    );
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LibraryDetailsScreen(
+          initialData: nearby,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProfileRow(String label, String value, {bool isStatus = false, VoidCallback? onTap}) {
+    final rowContent = Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 12, color: AppColors.slate400)),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: isStatus
+                      ? AppColors.emerald600
+                      : (onTap != null ? AppColors.primary : AppColors.slate800),
+                ),
+              ),
+              if (onTap != null) ...[
+                const SizedBox(width: 4),
+                const Icon(Icons.arrow_forward_ios, size: 10, color: AppColors.primary),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+
+    if (onTap != null) {
+      return InkWell(onTap: onTap, child: rowContent);
+    }
+    return rowContent;
   }
 
   // ==========================================

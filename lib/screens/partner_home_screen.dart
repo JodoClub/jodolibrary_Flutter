@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/app_models.dart';
+import '../models/library_business_model.dart';
 import '../services/api_service.dart';
 import '../services/auth_storage.dart';
 import '../theme/app_theme.dart';
@@ -8,6 +9,8 @@ import '../widgets/brand_logo.dart';
 import '../widgets/custom_button.dart';
 import '../widgets/qr_code_widget.dart';
 import '../widgets/common_widgets.dart';
+import 'library_details_screen.dart';
+import 'owner_business_profile_screen.dart';
 
 class PartnerHomeScreen extends StatefulWidget {
   final VoidCallback onLogout;
@@ -36,6 +39,7 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
   String _city = 'Patna';
   int _totalSeats = 60;
   String _ownerPhone = '';
+  LibraryBusinessModel? _businessProfile;
 
   @override
   void initState() {
@@ -100,6 +104,23 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
           city: _city,
           totalSeats: _totalSeats,
         );
+      }
+    } catch (_) {}
+
+    try {
+      final bizRes = await ApiService.getOwnerBusinessProfile();
+      if (bizRes.success && bizRes.data != null && mounted) {
+        setState(() {
+          _businessProfile = LibraryBusinessModel.fromJson(bizRes.data!);
+          _libraryName = _businessProfile!.name;
+          _address = _businessProfile!.address;
+          _city = _businessProfile!.city;
+          _totalSeats = _businessProfile!.totalSeats;
+          if (_businessProfile!.contactPhone != null &&
+              _businessProfile!.contactPhone!.trim().isNotEmpty) {
+            _ownerPhone = _businessProfile!.contactPhone!.trim();
+          }
+        });
       }
     } catch (_) {}
   }
@@ -1367,6 +1388,9 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
               ),
               const SizedBox(height: 14),
 
+              _buildGoogleBusinessProfileCard(),
+              const SizedBox(height: 14),
+
               InkWell(
                 borderRadius: BorderRadius.circular(20),
                 onTap: () => _openStandeeQRModal(),
@@ -1424,6 +1448,280 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
           Text(
             value,
             style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.slate800),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openOwnerBusinessProfileScreen() {
+    final initial = _businessProfile ??
+        LibraryBusinessModel(
+          id: 'owner-lib',
+          name: _libraryName,
+          address: _address,
+          city: _city,
+          totalSeats: _totalSeats,
+          contactPhone: _ownerPhone,
+        );
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => OwnerBusinessProfileScreen(
+          initialProfile: initial,
+          onProfileUpdated: (updated) {
+            setState(() {
+              _businessProfile = updated;
+              _libraryName = updated.name;
+              _address = updated.address;
+              _city = updated.city;
+              _totalSeats = updated.totalSeats;
+            });
+          },
+        ),
+      ),
+    ).then((_) => _loadProfileData());
+  }
+
+  void _openStudentPreview() {
+    final profile = _businessProfile ??
+        LibraryBusinessModel(
+          id: 'owner-lib',
+          name: _libraryName,
+          address: _address,
+          city: _city,
+          totalSeats: _totalSeats,
+          contactPhone: _ownerPhone,
+        );
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LibraryDetailsScreen(
+          initialData: profile,
+          isOwnerPreview: true,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGoogleBusinessProfileCard() {
+    final photos = _businessProfile?.photos ?? const [];
+    final amenities = _businessProfile?.amenities ?? const [];
+    final hasMaps = _businessProfile?.googleMapsUrl != null &&
+        _businessProfile!.googleMapsUrl!.trim().isNotEmpty;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.orange500.withValues(alpha: 0.3)),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.orange500.withValues(alpha: 0.06),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: AppColors.orange500.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    alignment: Alignment.center,
+                    child: const Icon(Icons.storefront_rounded, color: AppColors.orange500, size: 20),
+                  ),
+                  const SizedBox(width: 10),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      Text(
+                        'GOOGLE BUSINESS PROFILE',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.orange500,
+                          letterSpacing: 1.1,
+                        ),
+                      ),
+                      Text(
+                        'Public & Student View',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.slate900,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.emerald500.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircleAvatar(radius: 3, backgroundColor: AppColors.emerald500),
+                    SizedBox(width: 4),
+                    Text(
+                      'Live',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.emerald600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          // Photo Thumbnails Row
+          if (photos.isNotEmpty) ...[
+            SizedBox(
+              height: 64,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: photos.length > 5 ? 5 : photos.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                itemBuilder: (context, i) {
+                  final photo = photos[i];
+                  return ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Stack(
+                      children: [
+                        Image.network(
+                          photo,
+                          width: 80,
+                          height: 64,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(
+                            width: 80,
+                            height: 64,
+                            color: AppColors.slate200,
+                            child: const Icon(Icons.broken_image, size: 18, color: AppColors.slate400),
+                          ),
+                        ),
+                        if (i == 4 && photos.length > 5)
+                          Container(
+                            width: 80,
+                            height: 64,
+                            color: Colors.black54,
+                            alignment: Alignment.center,
+                            child: Text(
+                              '+${photos.length - 4}',
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13),
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // Quick Highlights Chips
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildProfileChip(
+                Icons.photo_library_outlined,
+                '${photos.length} Photos',
+                AppColors.primary,
+                AppColors.indigo50,
+              ),
+              _buildProfileChip(
+                Icons.map_outlined,
+                hasMaps ? 'Maps Linked' : 'Auto Search Map',
+                hasMaps ? AppColors.emerald600 : AppColors.amber600,
+                hasMaps ? AppColors.emerald50 : AppColors.amber50,
+              ),
+              _buildProfileChip(
+                Icons.schedule_outlined,
+                _businessProfile?.timing ?? '24×7 Open',
+                AppColors.slate700,
+                AppColors.slate100,
+              ),
+              _buildProfileChip(
+                Icons.checklist_rounded,
+                '${amenities.length} Facilities',
+                AppColors.orange600,
+                AppColors.orange50,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Action Buttons
+          Row(
+            children: [
+              Expanded(
+                flex: 3,
+                child: CustomButton(
+                  label: 'Manage Profile & Photos',
+                  leading: const Icon(Icons.edit_note_rounded, size: 16),
+                  onPressed: _openOwnerBusinessProfileScreen,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 2,
+                child: CustomButton(
+                  label: 'Preview',
+                  variant: ButtonVariant.ghost,
+                  leading: const Icon(Icons.remove_red_eye_outlined, size: 16, color: AppColors.primary),
+                  onPressed: _openStudentPreview,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProfileChip(IconData icon, String text, Color textColor, Color bgColor) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: textColor),
+          const SizedBox(width: 5),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: textColor,
+            ),
           ),
         ],
       ),

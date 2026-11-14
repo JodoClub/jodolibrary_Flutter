@@ -10,10 +10,12 @@ import 'screens/student_setup_screen.dart';
 import 'screens/welcome_screen.dart';
 import 'services/api_service.dart';
 import 'services/auth_storage.dart';
+import 'services/network_service.dart';
 import 'theme/app_theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  NetworkService.instance.initialize();
   runApp(const JodoApp());
 }
 
@@ -25,7 +27,22 @@ class JodoApp extends StatelessWidget {
     return MaterialApp(
       title: 'jodolibrary',
       debugShowCheckedModeBanner: false,
+      navigatorKey: NetworkService.navigatorKey,
+      scaffoldMessengerKey: NetworkService.scaffoldMessengerKey,
       theme: AppTheme.lightTheme,
+      builder: (context, child) {
+        return Stack(
+          children: [
+            ?child,
+            const Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: OfflineBannerBar(),
+            ),
+          ],
+        );
+      },
       home: const JodoRootFlow(),
     );
   }

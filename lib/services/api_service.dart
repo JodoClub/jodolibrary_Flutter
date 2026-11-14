@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../models/app_models.dart';
 import 'api_config.dart';
 import 'auth_storage.dart';
+import 'network_service.dart';
 
 class ApiResponse<T> {
   final bool success;
@@ -22,6 +24,29 @@ class ApiResponse<T> {
 
 class ApiService {
   static const Duration _timeout = Duration(seconds: 12);
+
+  static void _checkNetworkError(dynamic e) {
+    if (e is SocketException ||
+        e.toString().contains('SocketException') ||
+        e.toString().contains('Failed host lookup') ||
+        e.toString().contains('ClientException') ||
+        e.toString().contains('Network is unreachable') ||
+        e.toString().contains('Connection refused') ||
+        e.toString().contains('TimeoutException')) {
+      NetworkService.instance.notifyNetworkError();
+    }
+  }
+
+  static String _formatNetworkError(dynamic e, [String defaultPrefix = 'Could not connect to backend server']) {
+    _checkNetworkError(e);
+    if (e is SocketException ||
+        e.toString().contains('SocketException') ||
+        e.toString().contains('Failed host lookup') ||
+        e.toString().contains('Network is unreachable')) {
+      return 'No internet connection. Please check your network and try again.';
+    }
+    return '$defaultPrefix: $e';
+  }
 
   static Map<String, String> _buildHeaders({String? token, String? customTxnId}) {
     final txn = customTxnId ?? 'TXN-${DateTime.now().millisecondsSinceEpoch}';
@@ -89,7 +114,7 @@ class ApiService {
     } catch (e) {
       return ApiResponse(
         success: false,
-        message: 'Could not connect to backend server: $e',
+        message: _formatNetworkError(e),
       );
     }
   }
@@ -136,7 +161,7 @@ class ApiService {
     } catch (e) {
       return ApiResponse(
         success: false,
-        message: 'Backend connection error: $e',
+        message: _formatNetworkError(e, 'Backend connection error'),
       );
     }
   }
@@ -173,7 +198,7 @@ class ApiService {
         );
       }
     } catch (e) {
-      return ApiResponse(success: false, message: '$e');
+      return ApiResponse(success: false, message: _formatNetworkError(e));
     }
   }
 
@@ -215,7 +240,7 @@ class ApiService {
         );
       }
     } catch (e) {
-      return ApiResponse(success: false, message: '$e');
+      return ApiResponse(success: false, message: _formatNetworkError(e));
     }
   }
 
@@ -257,7 +282,7 @@ class ApiService {
         return ApiResponse(success: false, message: json['message']?.toString());
       }
     } catch (e) {
-      return ApiResponse(success: false, message: '$e');
+      return ApiResponse(success: false, message: _formatNetworkError(e));
     }
   }
 
@@ -307,7 +332,7 @@ class ApiService {
         );
       }
     } catch (e) {
-      return ApiResponse(success: false, message: '$e');
+      return ApiResponse(success: false, message: _formatNetworkError(e));
     }
   }
 
@@ -364,7 +389,7 @@ class ApiService {
         );
       }
     } catch (e) {
-      return ApiResponse(success: false, message: '$e');
+      return ApiResponse(success: false, message: _formatNetworkError(e));
     }
   }
 
@@ -388,7 +413,7 @@ class ApiService {
         return ApiResponse(success: false, message: json['message']?.toString());
       }
     } catch (e) {
-      return ApiResponse(success: false, message: '$e');
+      return ApiResponse(success: false, message: _formatNetworkError(e));
     }
   }
 
@@ -422,7 +447,7 @@ class ApiService {
         );
       }
     } catch (e) {
-      return ApiResponse(success: false, message: '$e');
+      return ApiResponse(success: false, message: _formatNetworkError(e));
     }
   }
 
@@ -442,7 +467,7 @@ class ApiService {
         return ApiResponse(success: false, message: json['message']?.toString());
       }
     } catch (e) {
-      return ApiResponse(success: false, message: '$e');
+      return ApiResponse(success: false, message: _formatNetworkError(e));
     }
   }
 
@@ -471,7 +496,7 @@ class ApiService {
         return ApiResponse(success: false, message: json['message']?.toString());
       }
     } catch (e) {
-      return ApiResponse(success: false, message: '$e');
+      return ApiResponse(success: false, message: _formatNetworkError(e));
     }
   }
 
@@ -491,7 +516,7 @@ class ApiService {
         return ApiResponse(success: false, message: json['message']?.toString());
       }
     } catch (e) {
-      return ApiResponse(success: false, message: '$e');
+      return ApiResponse(success: false, message: _formatNetworkError(e));
     }
   }
 
@@ -525,7 +550,7 @@ class ApiService {
         return ApiResponse(success: false, message: json['message']?.toString());
       }
     } catch (e) {
-      return ApiResponse(success: false, message: '$e');
+      return ApiResponse(success: false, message: _formatNetworkError(e));
     }
   }
 
@@ -549,7 +574,7 @@ class ApiService {
         return ApiResponse(success: false, message: json['message']?.toString());
       }
     } catch (e) {
-      return ApiResponse(success: false, message: '$e');
+      return ApiResponse(success: false, message: _formatNetworkError(e));
     }
   }
 
@@ -571,7 +596,7 @@ class ApiService {
         return ApiResponse(success: false, message: json['message']?.toString());
       }
     } catch (e) {
-      return ApiResponse(success: false, message: '$e');
+      return ApiResponse(success: false, message: _formatNetworkError(e));
     }
   }
 
@@ -594,7 +619,7 @@ class ApiService {
         return ApiResponse(success: false, message: json['message']?.toString());
       }
     } catch (e) {
-      return ApiResponse(success: false, message: '$e');
+      return ApiResponse(success: false, message: _formatNetworkError(e));
     }
   }
 
@@ -638,7 +663,172 @@ class ApiService {
         );
       }
     } catch (e) {
-      return ApiResponse(success: false, message: '$e');
+      return ApiResponse(success: false, message: _formatNetworkError(e));
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // GOOGLE MAPS BUSINESS PROFILE & FACILITIES APIS
+  // --------------------------------------------------------------------------
+
+  /// Get owner library Google Business profile
+  static Future<ApiResponse<Map<String, dynamic>>> getOwnerBusinessProfile() async {
+    try {
+      final token = await AuthStorage.getToken();
+      final uri = Uri.parse('${ApiConfig.baseUrl}/owner/library/business-profile');
+      final response = await http
+          .get(uri, headers: _buildHeaders(token: token))
+          .timeout(_timeout);
+
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 200 && json['success'] == true) {
+        return ApiResponse(success: true, data: json);
+      } else {
+        return ApiResponse(success: false, message: json['message']?.toString());
+      }
+    } catch (e) {
+      return ApiResponse(success: false, message: _formatNetworkError(e));
+    }
+  }
+
+  /// Update owner library Google Business profile
+  static Future<ApiResponse<Map<String, dynamic>>> updateOwnerBusinessProfile({
+    String? ownerName,
+    String? mobile,
+    String? libraryName,
+    String? branchName,
+    String? address,
+    String? area,
+    String? city,
+    int? totalSeats,
+    double? monthlyPrice,
+    List<String>? photos,
+    String? googleMapsUrl,
+    String? timing,
+    String? operatingDays,
+    String? contactPhone,
+    String? contactEmail,
+    String? websiteUrl,
+    String? whatsappNumber,
+    String? instagramUrl,
+    String? facebookUrl,
+    String? youtubeUrl,
+    List<String>? amenities,
+  }) async {
+    try {
+      final token = await AuthStorage.getToken();
+      final uri = Uri.parse('${ApiConfig.baseUrl}/owner/library/business-profile');
+      final body = jsonEncode({
+        if (ownerName != null) 'ownerName': ownerName.trim(),
+        if (mobile != null && mobile.isNotEmpty) 'mobile': mobile.replaceAll(RegExp(r'\D'), ''),
+        if (libraryName != null) 'libraryName': libraryName.trim(),
+        if (branchName != null) 'branchName': branchName.trim(),
+        if (address != null) 'address': address.trim(),
+        if (area != null) 'area': area.trim(),
+        if (city != null) 'city': city.trim(),
+        if (totalSeats != null) 'totalSeats': totalSeats,
+        if (monthlyPrice != null) 'monthlyPrice': monthlyPrice,
+        if (photos != null) 'photos': photos,
+        if (googleMapsUrl != null) 'googleMapsUrl': googleMapsUrl.trim(),
+        if (timing != null) 'timing': timing.trim(),
+        if (operatingDays != null) 'operatingDays': operatingDays.trim(),
+        if (contactPhone != null) 'contactPhone': contactPhone.trim(),
+        if (contactEmail != null) 'contactEmail': contactEmail.trim(),
+        if (websiteUrl != null) 'websiteUrl': websiteUrl.trim(),
+        if (whatsappNumber != null) 'whatsappNumber': whatsappNumber.trim(),
+        if (instagramUrl != null) 'instagramUrl': instagramUrl.trim(),
+        if (facebookUrl != null) 'facebookUrl': facebookUrl.trim(),
+        if (youtubeUrl != null) 'youtubeUrl': youtubeUrl.trim(),
+        if (amenities != null) 'amenities': amenities,
+      });
+
+      final response = await http
+          .put(uri, headers: _buildHeaders(token: token), body: body)
+          .timeout(_timeout);
+
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return ApiResponse(success: true, data: json);
+      } else {
+        return ApiResponse(
+          success: false,
+          code: json['code'] as String?,
+          message: json['message'] as String? ?? 'Failed to update business profile',
+        );
+      }
+    } catch (e) {
+      return ApiResponse(success: false, message: _formatNetworkError(e));
+    }
+  }
+
+  /// Upload photo for library via camera or gallery
+  static Future<ApiResponse<String>> uploadLibraryPhoto(File imageFile) async {
+    try {
+      final token = await AuthStorage.getToken();
+      final uri = Uri.parse('${ApiConfig.baseUrl}/owner/library/photos/upload');
+      final request = http.MultipartRequest('POST', uri);
+
+      final headers = _buildHeaders(token: token);
+      headers.remove('Content-Type'); // Multipart sets boundary automatically
+      request.headers.addAll(headers);
+
+      request.files.add(await http.MultipartFile.fromPath('file', imageFile.path));
+
+      final streamedResponse = await request.send().timeout(const Duration(seconds: 25));
+      final response = await http.Response.fromStream(streamedResponse);
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+
+      if (response.statusCode >= 200 && response.statusCode < 300 && json['url'] != null) {
+        String url = json['url'].toString();
+        if (url.startsWith('/')) {
+          url = '${ApiConfig.baseUrl.replaceAll('/api/v1', '')}$url';
+        }
+        return ApiResponse(success: true, data: url);
+      } else {
+        return ApiResponse(success: false, message: json['message']?.toString() ?? 'Upload failed');
+      }
+    } catch (e) {
+      return ApiResponse(success: false, message: _formatNetworkError(e, 'Photo upload failed'));
+    }
+  }
+
+  /// Get public/student library Google Business profile by ID
+  static Future<ApiResponse<Map<String, dynamic>>> getPublicLibraryDetails(String libraryId) async {
+    try {
+      final token = await AuthStorage.getToken();
+      final uri = Uri.parse('${ApiConfig.baseUrl}/libraries/$libraryId');
+      final response = await http
+          .get(uri, headers: _buildHeaders(token: token))
+          .timeout(_timeout);
+
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 200 && json['success'] == true) {
+        return ApiResponse(success: true, data: json);
+      } else {
+        return ApiResponse(success: false, message: json['message']?.toString());
+      }
+    } catch (e) {
+      return ApiResponse(success: false, message: _formatNetworkError(e));
+    }
+  }
+
+  /// Get student's active enrolled library details
+  static Future<ApiResponse<Map<String, dynamic>>> getActiveLibraryDetails() async {
+    try {
+      final token = await AuthStorage.getToken();
+      final uri = Uri.parse('${ApiConfig.baseUrl}/student/active-library');
+      final response = await http
+          .get(uri, headers: _buildHeaders(token: token))
+          .timeout(_timeout);
+
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 200 && json['success'] == true) {
+        return ApiResponse(success: true, data: json);
+      } else {
+        return ApiResponse(success: false, message: json['message']?.toString());
+      }
+    } catch (e) {
+      return ApiResponse(success: false, message: _formatNetworkError(e));
     }
   }
 
