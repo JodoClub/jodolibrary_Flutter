@@ -1,3 +1,5 @@
+import '../services/api_config.dart';
+
 /// Complete Google Business Style Profile Model for Libraries
 class LibraryBusinessModel {
   final String id;
@@ -60,65 +62,86 @@ class LibraryBusinessModel {
   }
 
   factory LibraryBusinessModel.fromJson(Map<String, dynamic> json) {
+    // 1. Unwrap nested payload if wrapped in 'library' or 'data'
+    final map = (json['library'] is Map<String, dynamic>)
+        ? json['library'] as Map<String, dynamic>
+        : (json['data'] is Map<String, dynamic>)
+            ? json['data'] as Map<String, dynamic>
+            : json;
+
+    String resolvePhotoUrl(String raw) {
+      final trimmed = raw.trim();
+      if (trimmed.isEmpty) return '';
+      if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+        return trimmed;
+      }
+      if (trimmed.startsWith('/')) {
+        final host = ApiConfig.baseUrl.replaceAll('/api/v1', '');
+        return '$host$trimmed';
+      }
+      return trimmed;
+    }
+
     List<String> parseStringList(dynamic val) {
       if (val is List) {
-        return val.map((e) => e.toString().trim()).where((e) => e.isNotEmpty).toList();
+        return val
+            .map((e) => e.toString().trim())
+            .where((e) => e.isNotEmpty)
+            .toList();
       }
       return [];
     }
 
-    // Default high-quality library photos if photos array is empty
-    List<String> photosList = parseStringList(json['photos']);
-    if (photosList.isEmpty && json['photoUrl'] != null && json['photoUrl'].toString().isNotEmpty) {
-      photosList.add(json['photoUrl'].toString());
-    }
-    if (photosList.isEmpty) {
-      photosList = [
-        'https://images.unsplash.com/photo-1521587760476-6c12a4b040da?auto=format&fit=crop&w=1200&q=80',
-        'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?auto=format&fit=crop&w=1200&q=80',
-        'https://images.unsplash.com/photo-1568667256549-094345857637?auto=format&fit=crop&w=1200&q=80',
-        'https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?auto=format&fit=crop&w=1200&q=80',
-        'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=1200&q=80',
-      ];
+    // Parse photos list and resolve relative upload URLs
+    List<String> photosList = parseStringList(map['photos'])
+        .map(resolvePhotoUrl)
+        .where((u) => u.isNotEmpty)
+        .toList();
+
+    if (photosList.isEmpty && map['photoUrl'] != null && map['photoUrl'].toString().trim().isNotEmpty) {
+      final resolvedSingle = resolvePhotoUrl(map['photoUrl'].toString().trim());
+      if (resolvedSingle.isNotEmpty) {
+        photosList.add(resolvedSingle);
+      }
     }
 
-    final double price = (json['monthlyPrice'] is num)
-        ? (json['monthlyPrice'] as num).toDouble()
-        : double.tryParse(json['monthlyPrice']?.toString() ?? '') ?? 1499.0;
+    final double price = (map['monthlyPrice'] is num)
+        ? (map['monthlyPrice'] as num).toDouble()
+        : double.tryParse(map['monthlyPrice']?.toString() ?? '') ?? 1499.0;
 
-    final double rat = (json['rating'] is num)
-        ? (json['rating'] as num).toDouble()
-        : double.tryParse(json['rating']?.toString() ?? '') ?? 4.9;
+    final double rat = (map['rating'] is num)
+        ? (map['rating'] as num).toDouble()
+        : double.tryParse(map['rating']?.toString() ?? '') ?? 4.9;
 
-    final int seats = (json['totalSeats'] is int)
-        ? json['totalSeats'] as int
-        : int.tryParse(json['totalSeats']?.toString() ?? '') ?? 60;
+    final int seats = (map['totalSeats'] is int)
+        ? map['totalSeats'] as int
+        : int.tryParse(map['totalSeats']?.toString() ?? '') ?? 60;
 
     return LibraryBusinessModel(
-      id: json['id']?.toString() ?? '',
-      name: json['name']?.toString() ?? 'Study Hub Library',
-      branchName: json['branchName']?.toString(),
-      address: json['address']?.toString() ?? 'Boring Road, Patna',
-      area: json['area']?.toString() ?? 'Boring Road',
-      city: json['city']?.toString() ?? 'Patna',
+      id: map['id']?.toString() ?? '',
+      name: map['name']?.toString() ?? 'Study Hub Library',
+      branchName: map['branchName']?.toString(),
+      address: map['address']?.toString() ?? 'Boring Road, Patna',
+      area: map['area']?.toString() ?? 'Boring Road',
+      city: map['city']?.toString() ?? 'Patna',
       totalSeats: seats,
       rating: rat,
       monthlyPrice: price,
       photos: photosList,
-      googleMapsUrl: json['googleMapsUrl']?.toString() ?? json['mapsUrl']?.toString(),
-      timing: json['timing']?.toString() ?? '24 Hours Open (24×7)',
-      operatingDays: json['operatingDays']?.toString() ?? 'Mon - Sun (All 7 Days Open)',
-      contactPhone: json['contactPhone']?.toString() ?? json['phone']?.toString(),
-      contactEmail: json['contactEmail']?.toString() ?? json['email']?.toString(),
-      websiteUrl: json['websiteUrl']?.toString(),
-      whatsappNumber: json['whatsappNumber']?.toString(),
-      instagramUrl: json['instagramUrl']?.toString(),
-      facebookUrl: json['facebookUrl']?.toString(),
-      youtubeUrl: json['youtubeUrl']?.toString(),
-      amenities: parseStringList(json['amenities']),
-      ownerName: json['ownerName']?.toString(),
-      ownerUserId: json['ownerUserId']?.toString(),
-      qrPayload: json['qrPayload']?.toString(),
+      googleMapsUrl: map['googleMapsUrl']?.toString() ?? map['mapsUrl']?.toString(),
+      timing: map['timing']?.toString() ?? '24 Hours Open (24×7)',
+      operatingDays: map['operatingDays']?.toString() ?? 'Mon - Sun (All 7 Days Open)',
+      contactPhone: map['contactPhone']?.toString() ?? map['phone']?.toString(),
+      contactEmail: map['contactEmail']?.toString() ?? map['email']?.toString(),
+      websiteUrl: map['websiteUrl']?.toString(),
+      whatsappNumber: map['whatsappNumber']?.toString(),
+      instagramUrl: map['instagramUrl']?.toString(),
+      facebookUrl: map['facebookUrl']?.toString(),
+      youtubeUrl: map['youtubeUrl']?.toString(),
+      amenities: parseStringList(map['amenities']),
+      ownerName: map['ownerName']?.toString(),
+      ownerUserId: map['ownerUserId']?.toString(),
+      qrPayload: map['qrPayload']?.toString(),
     );
   }
 

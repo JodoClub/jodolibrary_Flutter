@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/app_models.dart';
 import '../models/library_business_model.dart';
+import '../services/api_config.dart';
 import '../services/api_service.dart';
 import '../services/auth_storage.dart';
 import '../theme/app_theme.dart';
@@ -38,11 +39,38 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   String _studentCode = 'JODO-STU-8842';
   String _activeLibrary = 'Achievers Study Hub (Desk #B-14)';
   LibraryBusinessModel? _activeLibraryModel;
+  Map<String, dynamic>? _exploreRecommended;
+  List<Map<String, dynamic>> _exploreNearby = [];
+  bool _isLoadingExplore = false;
 
   @override
   void initState() {
     super.initState();
     _loadStudentProfileData();
+    _fetchExploreLibraries();
+  }
+
+  Future<void> _fetchExploreLibraries([String? query]) async {
+    setState(() => _isLoadingExplore = true);
+    try {
+      final res = await ApiService.exploreLibraries(query: query);
+      if (res.success && res.data != null && mounted) {
+        final rec = res.data!['recommended'] as Map<String, dynamic>?;
+        final list = (res.data!['nearby'] as List?)
+                ?.map((e) => e as Map<String, dynamic>)
+                .toList() ??
+            [];
+        setState(() {
+          _exploreRecommended = rec;
+          _exploreNearby = list;
+          _isLoadingExplore = false;
+        });
+      } else if (mounted) {
+        setState(() => _isLoadingExplore = false);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoadingExplore = false);
+    }
   }
 
   Future<void> _loadStudentProfileData() async {
@@ -1864,12 +1892,16 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   children: [
                     Container(
                       height: 150,
-                      decoration: const BoxDecoration(
+                      decoration: BoxDecoration(
                         color: AppColors.indigo950,
-                        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
                         image: DecorationImage(
                           image: NetworkImage(
-                            'https://images.unsplash.com/photo-1762857995550-1fc51c8fbf2d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixlib=rb-4.1.0&q=80&w=1080',
+                            (_exploreRecommended?['photoUrl'] != null && _exploreRecommended!['photoUrl'].toString().isNotEmpty)
+                                ? (_exploreRecommended!['photoUrl'].toString().startsWith('/')
+                                    ? '${ApiConfig.baseUrl.replaceAll('/api/v1', '')}${_exploreRecommended!['photoUrl']}'
+                                    : _exploreRecommended!['photoUrl'].toString())
+                                : 'https://images.unsplash.com/photo-1762857995550-1fc51c8fbf2d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixlib=rb-4.1.0&q=80&w=1080',
                           ),
                           fit: BoxFit.cover,
                         ),
@@ -1885,9 +1917,9 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                                 color: Colors.white.withOpacity(0.95),
                                 borderRadius: BorderRadius.circular(20),
                               ),
-                              child: const Text(
-                                '18 seats available',
-                                style: TextStyle(
+                              child: Text(
+                                '${_exploreRecommended?['seatsAvailable'] ?? 18} seats available',
+                                style: const TextStyle(
                                   color: AppColors.emerald600,
                                   fontSize: 10,
                                   fontWeight: FontWeight.w900,
@@ -1904,9 +1936,9 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                                 color: AppColors.indigo950.withOpacity(0.9),
                                 borderRadius: BorderRadius.circular(20),
                               ),
-                              child: const Text(
-                                '★ 4.9',
-                                style: TextStyle(
+                              child: Text(
+                                '★ ${((_exploreRecommended?['rating'] as num?)?.toDouble() ?? 4.9).toStringAsFixed(1)}',
+                                style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 10,
                                   fontWeight: FontWeight.w900,
@@ -1924,18 +1956,23 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                         children: [
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: const [
-                              Text(
-                                'Saraswati Study Hub',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w900,
-                                  color: AppColors.slate900,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  _exploreRecommended?['name']?.toString() ?? 'Saraswati Study Hub',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w900,
+                                    color: AppColors.slate900,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
+                              const SizedBox(width: 8),
                               Text(
-                                '₹1,499/mo',
-                                style: TextStyle(
+                                '₹${((_exploreRecommended?['monthlyPrice'] as num?)?.toInt() ?? 1499)}/mo',
+                                style: const TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w900,
                                   color: AppColors.slate900,
@@ -1945,18 +1982,18 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                           ),
                           const SizedBox(height: 4),
                           Row(
-                            children: const [
-                              Icon(Icons.location_on_outlined, size: 14, color: AppColors.slate400),
-                              SizedBox(width: 4),
+                            children: [
+                              const Icon(Icons.location_on_outlined, size: 14, color: AppColors.slate400),
+                              const SizedBox(width: 4),
                               Text(
-                                'Boring Road · 1.2 km',
-                                style: TextStyle(fontSize: 11, color: AppColors.slate400),
+                                _exploreRecommended?['area']?.toString() ?? 'Boring Road · 1.2 km',
+                                style: const TextStyle(fontSize: 11, color: AppColors.slate400),
                               ),
                             ],
                           ),
                           const SizedBox(height: 12),
                           Row(
-                            children: const ['24×7', 'Wi-Fi', 'AC', 'Silent Zone'].map((amenity) {
+                            children: ['24×7', 'Wi-Fi', 'AC', 'Silent Zone'].map((amenity) {
                               return Container(
                                 margin: const EdgeInsets.only(right: 6),
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1985,68 +2022,175 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
               const SizedBox(height: 24),
 
               // Nearby study spaces list
-              const Text(
-                'Nearby study spaces',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.slate900),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Nearby study spaces',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.slate900),
+                  ),
+                  if (_isLoadingExplore)
+                    const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                    ),
+                ],
               ),
               const SizedBox(height: 12),
-              ...filtered.map((item) {
-                return InkWell(
-                  borderRadius: BorderRadius.circular(20),
-                  onTap: () => _openNearbyLibraryDetails(item[0], item[1]),
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: AppColors.slate200),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: AppColors.indigo50,
+              if (_exploreNearby.isNotEmpty)
+                ..._exploreNearby.where((lib) {
+                  final name = (lib['name']?.toString() ?? '').toLowerCase();
+                  final area = (lib['area']?.toString() ?? '').toLowerCase();
+                  final q = _searchQuery.toLowerCase();
+                  return name.contains(q) || area.contains(q);
+                }).map((item) {
+                  final String? photo = item['photoUrl']?.toString();
+                  final String resolvedPhoto = (photo != null && photo.isNotEmpty)
+                      ? (photo.startsWith('/') ? '${ApiConfig.baseUrl.replaceAll('/api/v1', '')}$photo' : photo)
+                      : '';
+                  return InkWell(
+                    borderRadius: BorderRadius.circular(20),
+                    onTap: () => _openLibraryDetailsById(item['id']?.toString()),
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: AppColors.slate200),
+                      ),
+                      child: Row(
+                        children: [
+                          ClipRRect(
                             borderRadius: BorderRadius.circular(14),
+                            child: resolvedPhoto.isNotEmpty
+                                ? Image.network(
+                                    resolvedPhoto,
+                                    width: 46,
+                                    height: 46,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => Container(
+                                      width: 46,
+                                      height: 46,
+                                      decoration: BoxDecoration(
+                                        color: AppColors.indigo50,
+                                        borderRadius: BorderRadius.circular(14),
+                                      ),
+                                      alignment: Alignment.center,
+                                      child: const Icon(Icons.apartment, color: AppColors.indigo950, size: 20),
+                                    ),
+                                  )
+                                : Container(
+                                    width: 46,
+                                    height: 46,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.indigo50,
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                    alignment: Alignment.center,
+                                    child: const Icon(Icons.apartment, color: AppColors.indigo950, size: 20),
+                                  ),
                           ),
-                          alignment: Alignment.center,
-                          child: const Icon(Icons.apartment, color: AppColors.indigo950, size: 20),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                item[0],
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w900,
-                                  color: AppColors.slate900,
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  item['name']?.toString() ?? '',
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w900,
+                                    color: AppColors.slate900,
+                                  ),
                                 ),
-                              ),
-                              Text(
-                                item[1],
-                                style: const TextStyle(fontSize: 11, color: AppColors.slate400),
-                              ),
-                            ],
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${item['area'] ?? 'Patna'} · ₹${((item['monthlyPrice'] as num?)?.toInt() ?? 1499)}/mo · ★ ${((item['rating'] as num?)?.toDouble() ?? 4.0).toStringAsFixed(1)}',
+                                  style: const TextStyle(fontSize: 11, color: AppColors.slate400),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        Text(
-                          item[2],
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w900,
-                            color: AppColors.emerald600,
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: AppColors.emerald50,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              '${item['seatsAvailable'] ?? 0} seats',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w900,
+                                color: AppColors.emerald600,
+                              ),
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                );
-              }),
+                  );
+                })
+              else
+                ...filtered.map((item) {
+                  return InkWell(
+                    borderRadius: BorderRadius.circular(20),
+                    onTap: () => _openNearbyLibraryDetails(item[0], item[1]),
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: AppColors.slate200),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: AppColors.indigo50,
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            alignment: Alignment.center,
+                            child: const Icon(Icons.apartment, color: AppColors.indigo950, size: 20),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  item[0],
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w900,
+                                    color: AppColors.slate900,
+                                  ),
+                                ),
+                                Text(
+                                  item[1],
+                                  style: const TextStyle(fontSize: 11, color: AppColors.slate400),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Text(
+                            item[2],
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.emerald600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
             ],
           ),
         ),
@@ -2822,7 +2966,23 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
     );
   }
 
+  void _openLibraryDetailsById(String? id) {
+    if (id == null || id.isEmpty) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LibraryDetailsScreen(
+          libraryId: id,
+        ),
+      ),
+    );
+  }
+
   void _openRecommendedLibraryDetails() {
+    if (_exploreRecommended != null && _exploreRecommended!['id'] != null) {
+      _openLibraryDetailsById(_exploreRecommended!['id']?.toString());
+      return;
+    }
     const recommended = LibraryBusinessModel(
       id: 'recommended-lib-1',
       name: 'Saraswati Study Hub',

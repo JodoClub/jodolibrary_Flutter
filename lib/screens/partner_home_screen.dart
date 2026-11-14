@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/app_models.dart';
 import '../models/library_business_model.dart';
+import '../models/library_facilities.dart';
 import '../services/api_service.dart';
 import '../services/auth_storage.dart';
 import '../theme/app_theme.dart';
@@ -1305,7 +1307,7 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                   ),
                   InkWell(
                     borderRadius: BorderRadius.circular(16),
-                    onTap: _openEditOwnerProfileModal,
+                    onTap: _openOwnerBusinessProfileScreen,
                     child: Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
@@ -1341,54 +1343,7 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: AppColors.slate200),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'LIBRARY DETAILS',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w900,
-                            color: AppColors.slate400,
-                            letterSpacing: 1,
-                          ),
-                        ),
-                        InkWell(
-                          onTap: _openEditOwnerProfileModal,
-                          child: const Text(
-                            'Edit Info',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.primary,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    _buildSettingsRow('Hub Name', _libraryName),
-                    _buildSettingsRow('Address', '$_address, $_city'),
-                    _buildSettingsRow('Total Desks', '$_totalSeats Dedicated Desks'),
-                    _buildSettingsRow('Contact', _ownerPhone.isNotEmpty ? _ownerPhone : '+91 98765 43210'),
-                    _buildSettingsRow('Standard Plan', '₹1,499 / student / month'),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 14),
-
-              _buildGoogleBusinessProfileCard(),
+              _buildUnifiedLibrarySection(),
               const SizedBox(height: 14),
 
               InkWell(
@@ -1435,22 +1390,6 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildSettingsRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(fontSize: 12, color: AppColors.slate400)),
-          Text(
-            value,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.slate800),
-          ),
-        ],
-      ),
     );
   }
 
@@ -1506,22 +1445,40 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
     );
   }
 
-  Widget _buildGoogleBusinessProfileCard() {
+  Widget _buildUnifiedLibrarySection() {
     final photos = _businessProfile?.photos ?? const [];
     final amenities = _businessProfile?.amenities ?? const [];
     final hasMaps = _businessProfile?.googleMapsUrl != null &&
         _businessProfile!.googleMapsUrl!.trim().isNotEmpty;
+    final timing = _businessProfile?.timing ?? '24 Hours Open (24×7)';
+    final days = _businessProfile?.operatingDays ?? 'Mon - Sun (All 7 Days Open)';
+    final phone = _businessProfile?.contactPhone ?? (_ownerPhone.isNotEmpty ? _ownerPhone : '+91 98765 43210');
+    final whatsapp = _businessProfile?.whatsappNumber ?? (_ownerPhone.isNotEmpty ? _ownerPhone : null);
+    final price = _businessProfile?.monthlyPrice ?? 1499.0;
+    final branch = _businessProfile?.branchName;
+
+    // Top facilities from catalog matching active amenities or defaults
+    final activeFacs = (amenities.isNotEmpty ? amenities : [
+      'wifi', 'ac', 'ro_water', 'power_backup', 'lockers', 'ergonomic_chairs', 'charging_points', 'cctv'
+    ]).map((id) => LibraryFacilitiesCatalog.findById(id) ?? LibraryFacility(
+      id: id,
+      name: LibraryFacilitiesCatalog.getName(id),
+      description: 'Verified amenity',
+      icon: LibraryFacilitiesCatalog.getIcon(id),
+      category: 'General',
+    )).toList();
+
+    final top8Facs = activeFacs.take(8).toList();
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.orange500.withValues(alpha: 0.3)),
+        border: Border.all(color: AppColors.slate200),
         boxShadow: [
           BoxShadow(
-            color: AppColors.orange500.withValues(alpha: 0.06),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 16,
             offset: const Offset(0, 4),
           ),
@@ -1530,427 +1487,547 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: AppColors.orange500.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(12),
+          // 1. TOP: Library Photos Section
+          if (photos.isNotEmpty)
+            Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                  child: SizedBox(
+                    height: 160,
+                    width: double.infinity,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.all(12),
+                      itemCount: photos.length,
+                      separatorBuilder: (_, _) => const SizedBox(width: 10),
+                      itemBuilder: (context, i) {
+                        return ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: Stack(
+                            children: [
+                              Image.network(
+                                photos[i],
+                                width: 220,
+                                height: 136,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, _, _) => Container(
+                                  width: 220,
+                                  height: 136,
+                                  color: AppColors.slate200,
+                                  child: const Icon(Icons.broken_image_rounded, size: 28, color: AppColors.slate400),
+                                ),
+                              ),
+                              Positioned(
+                                left: 8,
+                                bottom: 8,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.65),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    '#${i + 1}',
+                                    style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
                     ),
-                    alignment: Alignment.center,
-                    child: const Icon(Icons.storefront_rounded, color: AppColors.orange500, size: 20),
                   ),
-                  const SizedBox(width: 10),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Text(
-                        'GOOGLE BUSINESS PROFILE',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w900,
-                          color: AppColors.orange500,
-                          letterSpacing: 1.1,
-                        ),
-                      ),
-                      Text(
-                        'Public & Student View',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.slate900,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.emerald500.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
+                Positioned(
+                  top: 18,
+                  right: 18,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.75),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Text(
+                      '${photos.length}/5 Photos',
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 11),
+                    ),
+                  ),
+                ),
+              ],
+            )
+          else
+            // Empty photo banner prompt
+            InkWell(
+              onTap: _openOwnerBusinessProfileScreen,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                decoration: const BoxDecoration(
+                  color: AppColors.primaryLight,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                ),
+                child: Column(
                   children: [
-                    CircleAvatar(radius: 3, backgroundColor: AppColors.emerald500),
-                    SizedBox(width: 4),
-                    Text(
-                      'Live',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.emerald600,
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
                       ),
+                      child: const Icon(Icons.add_a_photo_rounded, color: AppColors.primary, size: 26),
+                    ),
+                    const SizedBox(height: 10),
+                    const Text(
+                      'Upload Library Photos (Up to 5)',
+                      style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: AppColors.slate900),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Showcase study desks, AC hall & entrance to attract students.',
+                      style: TextStyle(fontSize: 11, color: AppColors.slate600),
+                      textAlign: TextAlign.center,
                     ),
                   ],
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 14),
+            ),
 
-          // Photo Thumbnails Row
-          if (photos.isNotEmpty) ...[
-            SizedBox(
-              height: 64,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: photos.length > 5 ? 5 : photos.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 8),
-                itemBuilder: (context, i) {
-                  final photo = photos[i];
-                  return ClipRRect(
+          // 2. Library Identity Header (No separate "Google Business Profile" title)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _libraryName,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.slate900,
+                        ),
+                      ),
+                      if (branch != null && branch.trim().isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          branch,
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primary),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.emerald50,
                     borderRadius: BorderRadius.circular(12),
-                    child: Stack(
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircleAvatar(radius: 3, backgroundColor: AppColors.emerald500),
+                      SizedBox(width: 5),
+                      Text(
+                        'Active',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.emerald600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 12),
+          const Divider(height: 1, color: AppColors.slate100),
+          const SizedBox(height: 12),
+
+          // 3. Address & Maps (No duplicates)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.location_on_rounded, size: 16, color: AppColors.primary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '$_address, $_city',
+                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: AppColors.slate800, height: 1.3),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                InkWell(
+                  onTap: () async {
+                    final mapsLink = _businessProfile?.googleMapsUrl ??
+                        'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent("$_libraryName, $_address, $_city")}';
+                    final uri = Uri.parse(mapsLink);
+                    if (await canLaunchUrl(uri)) {
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: hasMaps ? AppColors.indigo50 : AppColors.slate100,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: hasMaps ? AppColors.indigo200 : AppColors.slate200),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Image.network(
-                          photo,
-                          width: 80,
-                          height: 64,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Container(
-                            width: 80,
-                            height: 64,
-                            color: AppColors.slate200,
-                            child: const Icon(Icons.broken_image, size: 18, color: AppColors.slate400),
+                        Icon(
+                          hasMaps ? Icons.directions_rounded : Icons.search_rounded,
+                          size: 13,
+                          color: hasMaps ? AppColors.primary : AppColors.slate600,
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          hasMaps ? 'Google Maps Navigation Linked' : 'Search Location on Google Maps',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: hasMaps ? AppColors.primary : AppColors.slate700,
                           ),
                         ),
-                        if (i == 4 && photos.length > 5)
-                          Container(
-                            width: 80,
-                            height: 64,
-                            color: Colors.black54,
-                            alignment: Alignment.center,
-                            child: Text(
-                              '+${photos.length - 4}',
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13),
-                            ),
-                          ),
+                        const SizedBox(width: 4),
+                        Icon(Icons.open_in_new_rounded, size: 11, color: hasMaps ? AppColors.primary : AppColors.slate500),
                       ],
                     ),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 12),
-          ],
-
-          // Quick Highlights Chips
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _buildProfileChip(
-                Icons.photo_library_outlined,
-                '${photos.length} Photos',
-                AppColors.primary,
-                AppColors.indigo50,
-              ),
-              _buildProfileChip(
-                Icons.map_outlined,
-                hasMaps ? 'Maps Linked' : 'Auto Search Map',
-                hasMaps ? AppColors.emerald600 : AppColors.amber600,
-                hasMaps ? AppColors.emerald50 : AppColors.amber50,
-              ),
-              _buildProfileChip(
-                Icons.schedule_outlined,
-                _businessProfile?.timing ?? '24×7 Open',
-                AppColors.slate700,
-                AppColors.slate100,
-              ),
-              _buildProfileChip(
-                Icons.checklist_rounded,
-                '${amenities.length} Facilities',
-                AppColors.orange600,
-                AppColors.orange50,
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          // Action Buttons
-          Row(
-            children: [
-              Expanded(
-                flex: 3,
-                child: CustomButton(
-                  label: 'Manage Profile & Photos',
-                  leading: const Icon(Icons.edit_note_rounded, size: 16),
-                  onPressed: _openOwnerBusinessProfileScreen,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                flex: 2,
-                child: CustomButton(
-                  label: 'Preview',
-                  variant: ButtonVariant.ghost,
-                  leading: const Icon(Icons.remove_red_eye_outlined, size: 16, color: AppColors.primary),
-                  onPressed: _openStudentPreview,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildProfileChip(IconData icon, String text, Color textColor, Color bgColor) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 13, color: textColor),
-          const SizedBox(width: 5),
-          Text(
-            text,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: textColor,
+              ],
             ),
           ),
-        ],
-      ),
-    );
-  }
 
-  void _openEditOwnerProfileModal() {
-    final nameCtrl = TextEditingController(text: _ownerName);
-    final libCtrl = TextEditingController(text: _libraryName);
-    final addrCtrl = TextEditingController(text: _address);
-    final seatsCtrl = TextEditingController(text: _totalSeats.toString());
-    final phoneCtrl = TextEditingController(text: _ownerPhone.replaceAll('+91', '').trim());
-    String selectedCity = _city;
-    bool isSaving = false;
-    String? nameError;
-    String? libError;
-    String? addrError;
-    String? seatsError;
+          const SizedBox(height: 14),
+          const Divider(height: 1, color: AppColors.slate100),
+          const SizedBox(height: 14),
 
-    final cities = [
-      'Patna',
-      'Delhi',
-      'Mumbai',
-      'Kota',
-      'Bangalore',
-      'Pune',
-      'Jaipur',
-      'Lucknow',
-      'Hyderabad',
-      'Kolkata',
-    ];
-    if (!cities.contains(selectedCity)) {
-      cities.insert(0, selectedCity);
-    }
+          // 4. Unified Specifications (Total Desks, Timings, Days, Contact, WhatsApp, Plan)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            child: Column(
+              children: [
+                _buildUnifiedInfoRow(Icons.chair_alt_rounded, 'Total Desks', '$_totalSeats Dedicated Desks'),
+                _buildUnifiedInfoRow(Icons.access_time_rounded, 'Daily Timings', timing),
+                _buildUnifiedInfoRow(Icons.calendar_month_rounded, 'Working Days', days),
+                _buildUnifiedInfoRow(Icons.phone_rounded, 'Calling Contact', phone),
+                if (whatsapp != null && whatsapp.isNotEmpty)
+                  _buildUnifiedInfoRow(Icons.chat_rounded, 'WhatsApp Support', whatsapp),
+                _buildUnifiedInfoRow(Icons.currency_rupee_rounded, 'Standard Plan', '₹${price.toInt()} / student / month'),
+              ],
+            ),
+          ),
 
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setModalState) {
-          return Dialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-            insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(22),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text(
-                            'SETTINGS & PROFILE',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w900,
-                              color: AppColors.orange500,
-                              letterSpacing: 1,
+          const SizedBox(height: 14),
+          const Divider(height: 1, color: AppColors.slate100),
+          const SizedBox(height: 14),
+
+          // 5. Facilities Section (Circular App-Icon Grid, 8 items + "+ More" Popup)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'PROVIDED FACILITIES',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.slate400,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryLight,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '${activeFacs.length} Facilities',
+                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.primary),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+
+                // 8 App-Icon Circular Tiles (4 columns x 2 rows)
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 4,
+                    mainAxisSpacing: 12,
+                    crossAxisSpacing: 8,
+                    childAspectRatio: 0.8,
+                  ),
+                  itemCount: top8Facs.length,
+                  itemBuilder: (context, idx) {
+                    final fac = top8Facs[idx];
+                    return InkWell(
+                      onTap: () => _showAllFacilitiesModal(activeFacs),
+                      borderRadius: BorderRadius.circular(16),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryLight,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
                             ),
+                            child: Icon(fac.icon, size: 22, color: AppColors.primary),
                           ),
+                          const SizedBox(height: 6),
                           Text(
-                            'Edit Library Profile',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w900,
-                              color: AppColors.slate900,
+                            _getShortFacilityName(fac.name),
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.slate800,
+                              height: 1.15,
                             ),
                           ),
                         ],
                       ),
-                      IconButton(
-                        onPressed: () => Navigator.of(ctx).pop(),
-                        icon: const Icon(Icons.close),
+                    );
+                  },
+                ),
+
+                const SizedBox(height: 12),
+
+                // "+X More Facilities" Interactive Button -> opens bottom sheet modal
+                InkWell(
+                  onTap: () => _showAllFacilitiesModal(activeFacs),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AppColors.slate50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.slate200),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.apps_rounded, size: 16, color: AppColors.primary),
+                            const SizedBox(width: 8),
+                            Text(
+                              activeFacs.length > 8
+                                  ? '+${activeFacs.length - 8} More Facilities Provided'
+                                  : 'View All Available Facilities (${activeFacs.length})',
+                              style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: AppColors.primary),
+                            ),
+                          ],
+                        ),
+                        const Icon(Icons.arrow_forward_ios_rounded, size: 12, color: AppColors.slate400),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 18),
+          const Divider(height: 1, color: AppColors.slate100),
+          const SizedBox(height: 16),
+
+          // 6. Action Buttons (Full width stacked for responsive, zero-overflow design)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                CustomButton(
+                  height: 48,
+                  label: 'Edit Library Profile & Photos',
+                  leading: const Icon(Icons.edit_note_rounded, size: 18),
+                  onPressed: _openOwnerBusinessProfileScreen,
+                ),
+                const SizedBox(height: 10),
+                CustomButton(
+                  height: 46,
+                  label: 'Preview Student View',
+                  variant: ButtonVariant.ghost,
+                  leading: const Icon(Icons.remove_red_eye_outlined, size: 18, color: AppColors.primary),
+                  onPressed: _openStudentPreview,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUnifiedInfoRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 15, color: AppColors.slate400),
+              const SizedBox(width: 8),
+              Text(label, style: const TextStyle(fontSize: 12, color: AppColors.slate500, fontWeight: FontWeight.w600)),
+            ],
+          ),
+          const SizedBox(width: 12),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.slate800),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAllFacilitiesModal(List<LibraryFacility> facilities) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.75,
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.slate300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Provided Facilities',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.slate900,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${facilities.length} Verified Amenities for Students',
+                        style: const TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.w700),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  FormFieldWidget(
-                    label: 'OWNER FULL NAME',
-                    placeholder: 'e.g. Vikash Soni',
-                    controller: nameCtrl,
-                    errorText: nameError,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z\s]')),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  FormFieldWidget(
-                    label: 'LIBRARY / HUB NAME',
-                    placeholder: 'e.g. Achievers Study Hub',
-                    controller: libCtrl,
-                    errorText: libError,
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownFieldWidget(
-                    label: 'CITY',
-                    value: selectedCity,
-                    items: cities,
-                    onChanged: (val) {
-                      if (val != null) setModalState(() => selectedCity = val);
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  FormFieldWidget(
-                    label: 'COMPLETE ADDRESS',
-                    placeholder: 'e.g. Boring Road, Near Pillar 12',
-                    controller: addrCtrl,
-                    errorText: addrError,
-                  ),
-                  const SizedBox(height: 12),
-                  FormFieldWidget(
-                    label: 'CONTACT NUMBER',
-                    placeholder: '10-digit mobile number',
-                    prefix: '+91',
-                    controller: phoneCtrl,
-                    keyboardType: TextInputType.phone,
-                    maxLength: 10,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(10),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  FormFieldWidget(
-                    label: 'TOTAL SEAT CAPACITY',
-                    placeholder: 'e.g. 60',
-                    controller: seatsCtrl,
-                    errorText: seatsError,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  CustomButton(
-                    label: isSaving ? 'Saving Changes...' : 'Save Profile Changes',
-                    onPressed: isSaving
-                        ? null
-                        : () async {
-                            final name = nameCtrl.text.trim();
-                            final lib = libCtrl.text.trim();
-                            final addr = addrCtrl.text.trim();
-                            final seatsStr = seatsCtrl.text.trim();
-                            final seats = int.tryParse(seatsStr);
-
-                            bool hasErr = false;
-                            String? nErr;
-                            String? lErr;
-                            String? aErr;
-                            String? sErr;
-
-                            if (name.length < 3) {
-                              nErr = 'Name must be at least 3 characters';
-                              hasErr = true;
-                            }
-                            if (lib.length < 3) {
-                              lErr = 'Library name must be at least 3 characters';
-                              hasErr = true;
-                            }
-                            if (addr.length < 5) {
-                              aErr = 'Address must be at least 5 characters';
-                              hasErr = true;
-                            }
-                            if (seats == null || seats <= 0 || seats > 1000) {
-                              sErr = 'Seats must be between 1 and 1000';
-                              hasErr = true;
-                            }
-
-                            if (hasErr) {
-                              setModalState(() {
-                                nameError = nErr;
-                                libError = lErr;
-                                addrError = aErr;
-                                seatsError = sErr;
-                              });
-                              return;
-                            }
-
-                            setModalState(() => isSaving = true);
-
-                            final phone = phoneCtrl.text.trim();
-                            final res = await ApiService.updateOwnerProfile(
-                              ownerName: name,
-                              libraryName: lib,
-                              address: addr,
-                              city: selectedCity,
-                              totalSeats: seats!,
-                              mobile: phone.isNotEmpty ? phone : null,
-                            );
-
-                            if (!mounted) return;
-
-                            if (res.success) {
-                              setState(() {
-                                _ownerName = name;
-                                _libraryName = lib;
-                                _address = addr;
-                                _city = selectedCity;
-                                _totalSeats = seats;
-                                if (phone.isNotEmpty) _ownerPhone = '+91 $phone';
-                              });
-                              Navigator.of(ctx).pop();
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Profile updated successfully! 🎉'),
-                                  backgroundColor: AppColors.secondary,
-                                ),
-                              );
-                            } else {
-                              setModalState(() => isSaving = false);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(res.message ?? 'Update failed'),
-                                  backgroundColor: AppColors.rose600,
-                                ),
-                              );
-                            }
-                          },
+                  IconButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    icon: const Icon(Icons.close_rounded, color: AppColors.slate500),
                   ),
                 ],
               ),
-            ),
-          );
-        },
-      ),
+              const SizedBox(height: 10),
+              const Divider(height: 1, color: AppColors.slate200),
+              const SizedBox(height: 10),
+              Expanded(
+                child: ListView.separated(
+                  itemCount: facilities.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1, color: AppColors.slate100),
+                  itemBuilder: (context, idx) {
+                    final fac = facilities[idx];
+                    return ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                      leading: Container(
+                        width: 42,
+                        height: 42,
+                        decoration: const BoxDecoration(
+                          color: AppColors.primaryLight,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(fac.icon, size: 20, color: AppColors.primary),
+                      ),
+                      title: Text(
+                        fac.name,
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: AppColors.slate900),
+                      ),
+                      subtitle: Text(
+                        fac.description,
+                        style: const TextStyle(fontSize: 11, color: AppColors.slate500),
+                      ),
+                      trailing: const Icon(Icons.check_circle_rounded, color: AppColors.emerald500, size: 18),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 12),
+              CustomButton(
+                label: 'Close',
+                variant: ButtonVariant.ghost,
+                onPressed: () => Navigator.pop(ctx),
+              ),
+            ],
+          ),
+        );
+      },
     );
+  }
+
+  String _getShortFacilityName(String fullName) {
+    if (fullName.contains('Wi-Fi')) return '5G Wi-Fi';
+    if (fullName.contains('Air-Conditioned')) return 'Full AC';
+    if (fullName.contains('RO')) return 'RO Water';
+    if (fullName.contains('Power Backup')) return 'Power Backup';
+    if (fullName.contains('Lockers')) return 'Lockers';
+    if (fullName.contains('Chairs')) return 'Comfort Chairs';
+    if (fullName.contains('Charging')) return 'Charging Port';
+    if (fullName.contains('CCTV')) return '24×7 CCTV';
+    return fullName.split(' ').take(2).join(' ');
   }
 
   // ==========================================
