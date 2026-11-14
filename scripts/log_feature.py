@@ -7,6 +7,13 @@ from datetime import datetime
 WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbzt9Mpl30eYf08PJDN1sw2YWUpqahOsmtMb8IUBHZlPIHSt_iI08A9pdzImcIk2fBS0tQ/exec"
 
 def send_feature_to_sheet(feature_name, category, description, third_party="None", status="Completed", date_time=None):
+    # User rule: Do not log release, build, or APK deployment details to the sheet.
+    # ONLY functional features developed in the app/backend must be logged.
+    ignored_keywords = ["release", "apk", "ci/cd", "deployment", "git push"]
+    if any(k in feature_name.lower() or k in category.lower() for k in ignored_keywords):
+        print(f"[SKIP] '{feature_name}' ignored. Only functional feature developments are logged to the sheet.")
+        return False, "Skipped: Release/Deployment details are excluded."
+
     if not date_time:
         date_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
