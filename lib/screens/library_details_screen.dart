@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/library_business_model.dart';
 import '../models/library_facilities.dart';
@@ -143,6 +144,222 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
     }
   }
 
+  void _shareLibrary() {
+    _showShareModal();
+  }
+
+  void _showShareModal() {
+    final info = '${_library.displayName}\n'
+        '📍 Address: ${_library.address}\n'
+        '⏰ Timings: ${_library.timing} (${_library.operatingDays})\n'
+        '📞 Phone: ${_library.contactPhone ?? "Available on JodoLibrary"}\n'
+        '${_library.whatsappNumber != null && _library.whatsappNumber!.isNotEmpty ? "💬 WhatsApp: ${_library.whatsappNumber}\n" : ""}'
+        '${_library.googleMapsUrl != null && _library.googleMapsUrl!.isNotEmpty ? "🗺️ Maps: ${_library.googleMapsUrl}\n" : ""}'
+        '🚀 Discover & Book seats on JodoLibrary: https://jodolibrary.com';
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.slate300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Share Library',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.slate900,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, color: AppColors.slate500),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const Text(
+                'Share library details and address directly with friends or students.',
+                style: TextStyle(fontSize: 13, color: AppColors.slate500),
+              ),
+              const SizedBox(height: 24),
+              // App Icons Row
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  // WhatsApp
+                  _buildShareAppTarget(
+                    icon: Icons.chat_bubble_rounded,
+                    label: 'WhatsApp',
+                    color: const Color(0xFF25D366),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      final encoded = Uri.encodeComponent(info);
+                      _launchUrlString('whatsapp://send?text=$encoded', fallbackScheme: 'https://wa.me/?text=$encoded');
+                    },
+                  ),
+                  // Messages (SMS)
+                  _buildShareAppTarget(
+                    icon: Icons.sms_rounded,
+                    label: 'Messages',
+                    color: AppColors.orange500,
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      final encoded = Uri.encodeComponent(info);
+                      _launchUrlString('sms:?body=$encoded');
+                    },
+                  ),
+                  // Copy Link / Text
+                  _buildShareAppTarget(
+                    icon: Icons.copy_rounded,
+                    label: 'Copy Details',
+                    color: AppColors.primary,
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      Clipboard.setData(ClipboardData(text: info));
+                      _showToast('Copied to Clipboard', 'Library details copied and ready to share!');
+                    },
+                  ),
+                  // More Apps (System Chooser)
+                  _buildShareAppTarget(
+                    icon: Icons.share_rounded,
+                    label: 'More Apps',
+                    color: AppColors.indigo950,
+                    onTap: () async {
+                      Navigator.pop(ctx);
+                      try {
+                        const channel = MethodChannel('com.jodo.library/app_install');
+                        await channel.invokeMethod('shareText', {
+                          'text': info,
+                          'title': 'Share ${_library.displayName}',
+                        });
+                      } catch (_) {
+                        Clipboard.setData(ClipboardData(text: info));
+                        _showToast('Copied to Clipboard', 'Library details copied!');
+                      }
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 22),
+              // Quick Preview card
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.slate50,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.slate200),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryLight,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.local_library_rounded, color: AppColors.primary, size: 22),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _library.displayName,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.slate900,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _library.address,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.slate500,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildShareAppTarget({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 54,
+              height: 54,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+                border: Border.all(color: color.withValues(alpha: 0.35), width: 1.5),
+              ),
+              child: Icon(icon, color: color, size: 26),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                color: AppColors.slate800,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showToast(String title, String subtitle) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -227,34 +444,6 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
                       ),
                     ),
                   ),
-                  actions: [
-                    if (widget.isOwnerPreview)
-                      Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: AppColors.orange500,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: const Center(
-                          child: Text(
-                            'Owner Preview',
-                            style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800),
-                          ),
-                        ),
-                      ),
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: CircleAvatar(
-                        backgroundColor: Colors.black.withValues(alpha: 0.5),
-                        child: IconButton(
-                          icon: const Icon(Icons.navigation_rounded, color: Colors.white, size: 20),
-                          tooltip: 'Open in Google Maps',
-                          onPressed: _openGoogleMaps,
-                        ),
-                      ),
-                    ),
-                  ],
                   flexibleSpace: FlexibleSpaceBar(
                     background: Stack(
                       fit: StackFit.expand,
@@ -262,6 +451,7 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
                         // Page View Image Carousel
                         PageView.builder(
                           controller: _pageController,
+                          physics: const BouncingScrollPhysics(),
                           itemCount: photos.length,
                           onPageChanged: (idx) => setState(() => _currentPhotoIndex = idx),
                           itemBuilder: (context, idx) {
@@ -285,22 +475,82 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
                           },
                         ),
 
-                        // Gradient protection overlay
+                        // Gradient protection overlay - wrapped in IgnorePointer to allow horizontal swipe
                         Positioned.fill(
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                colors: [
-                                  Colors.black.withValues(alpha: 0.4),
-                                  Colors.transparent,
-                                  Colors.black.withValues(alpha: 0.75),
-                                ],
+                          child: IgnorePointer(
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Colors.black.withValues(alpha: 0.4),
+                                    Colors.transparent,
+                                    Colors.black.withValues(alpha: 0.75),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
                         ),
+
+                        // Left & Right Carousel Slide Arrows
+                        if (photos.length > 1) ...[
+                          Positioned(
+                            left: 10,
+                            top: 0,
+                            bottom: 0,
+                            child: Center(
+                              child: GestureDetector(
+                                onTap: () {
+                                  if (_currentPhotoIndex > 0) {
+                                    _pageController.previousPage(
+                                      duration: const Duration(milliseconds: 300),
+                                      curve: Curves.easeInOut,
+                                    );
+                                  }
+                                },
+                                child: Container(
+                                  width: 36,
+                                  height: 36,
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.4),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+                                  ),
+                                  child: const Icon(Icons.chevron_left_rounded, color: Colors.white, size: 24),
+                                ),
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            right: 10,
+                            top: 0,
+                            bottom: 0,
+                            child: Center(
+                              child: GestureDetector(
+                                onTap: () {
+                                  if (_currentPhotoIndex < photos.length - 1) {
+                                    _pageController.nextPage(
+                                      duration: const Duration(milliseconds: 300),
+                                      curve: Curves.easeInOut,
+                                    );
+                                  }
+                                },
+                                child: Container(
+                                  width: 36,
+                                  height: 36,
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.4),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+                                  ),
+                                  child: const Icon(Icons.chevron_right_rounded, color: Colors.white, size: 24),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
 
                         // Photo Counter Badge (e.g. 1/5)
                         Positioned(
@@ -659,24 +909,13 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
             color: AppColors.secondaryDark,
             onTap: _openWhatsApp,
           ),
-          if (_library.websiteUrl != null && _library.websiteUrl!.isNotEmpty) ...[
-            const SizedBox(width: 10),
-            _buildActionPill(
-              icon: Icons.language_rounded,
-              label: 'Website',
-              color: AppColors.slate700,
-              onTap: () => _launchUrlString(_library.websiteUrl),
-            ),
-          ],
-          if (_library.instagramUrl != null && _library.instagramUrl!.isNotEmpty) ...[
-            const SizedBox(width: 10),
-            _buildActionPill(
-              icon: Icons.camera_alt_outlined,
-              label: 'Instagram',
-              color: Colors.purple,
-              onTap: () => _launchUrlString(_library.instagramUrl),
-            ),
-          ],
+          const SizedBox(width: 10),
+          _buildActionPill(
+            icon: Icons.share_rounded,
+            label: 'Share',
+            color: AppColors.slate700,
+            onTap: _shareLibrary,
+          ),
         ],
       ),
     );
@@ -817,6 +1056,153 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
     );
   }
 
+  String _getShortFacilityName(String fullName) {
+    if (fullName.contains('Wi-Fi')) return '5G Wi-Fi';
+    if (fullName.contains('Air-Conditioned')) return 'Full AC';
+    if (fullName.contains('RO')) return 'RO Water';
+    if (fullName.contains('Power Backup')) return 'Power Backup';
+    if (fullName.contains('Lockers')) return 'Lockers';
+    if (fullName.contains('Chairs')) return 'Comfort Chairs';
+    if (fullName.contains('Charging')) return 'Charging Port';
+    if (fullName.contains('CCTV')) return '24×7 CCTV';
+    if (fullName.contains('Biometric')) return 'Biometric Access';
+    if (fullName.contains('24/7') || fullName.contains('Open 24')) return 'Open 24/7';
+    if (fullName.contains('Silent')) return 'Silent Zone';
+    if (fullName.contains('Dining')) return 'Cafeteria';
+    if (fullName.contains('Newspaper')) return 'Daily News';
+    if (fullName.contains('Parking')) return 'Safe Parking';
+    if (fullName.contains('Washroom')) return 'Clean Restroom';
+    if (fullName.contains('Discussion')) return 'Discussion Room';
+    return fullName.split(' ').take(2).join(' ');
+  }
+
+  void _showAllFacilitiesModal(List<LibraryFacility> allFacs) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.75,
+          ),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.slate300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Provided Facilities',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.slate900,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${allFacs.length} Verified Amenities for Students',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, color: AppColors.slate500),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const Divider(height: 20),
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: allFacs.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1, indent: 56),
+                  itemBuilder: (context, idx) {
+                    final fac = allFacs[idx];
+                    return ListTile(
+                      contentPadding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+                      leading: Container(
+                        width: 42,
+                        height: 42,
+                        decoration: const BoxDecoration(
+                          color: AppColors.primaryLight,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(fac.icon, size: 20, color: AppColors.primary),
+                      ),
+                      title: Text(
+                        fac.name,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13.5,
+                          color: AppColors.slate900,
+                        ),
+                      ),
+                      subtitle: Text(
+                        fac.description,
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          color: AppColors.slate500,
+                        ),
+                      ),
+                      trailing: const Icon(
+                        Icons.check_circle_rounded,
+                        color: AppColors.emerald500,
+                        size: 20,
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: AppColors.slate300),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  child: const Text(
+                    'Close',
+                    style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.slate700),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildFacilitiesSection() {
     final activeAmenities = _library.amenities;
     final facilities = activeAmenities.isNotEmpty
@@ -830,6 +1216,8 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
                 ))
             .toList()
         : LibraryFacilitiesCatalog.all.take(16).toList();
+
+    final displayFacs = facilities.length > 8 ? facilities.take(8).toList() : facilities;
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -880,39 +1268,72 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
             'Premium student-first study amenities configured by the library owner.',
             style: TextStyle(fontSize: 12, color: AppColors.slate500),
           ),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: facilities.map((fac) {
-              return Tooltip(
-                message: fac.description,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: AppColors.slate50,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: AppColors.slate200),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(fac.icon, size: 16, color: AppColors.primary),
-                      const SizedBox(width: 8),
-                      Text(
-                        fac.name,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.slate800,
+          const SizedBox(height: 18),
+          // 4-Column Grid with Circular Icon at Top and Label Directly Below
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: displayFacs.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 4,
+              mainAxisSpacing: 14,
+              crossAxisSpacing: 8,
+              mainAxisExtent: 82,
+            ),
+            itemBuilder: (context, idx) {
+              final fac = displayFacs[idx];
+              return InkWell(
+                onTap: () => _showAllFacilitiesModal(facilities),
+                borderRadius: BorderRadius.circular(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryLight,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: AppColors.primary.withValues(alpha: 0.3),
+                          width: 1.5,
                         ),
                       ),
-                    ],
-                  ),
+                      child: Icon(fac.icon, size: 22, color: AppColors.primary),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _getShortFacilityName(fac.name),
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.slate800,
+                        height: 1.15,
+                      ),
+                    ),
+                  ],
                 ),
               );
-            }).toList(),
+            },
           ),
+          if (facilities.length > 8) ...[
+            const SizedBox(height: 14),
+            OutlinedButton.icon(
+              onPressed: () => _showAllFacilitiesModal(facilities),
+              icon: const Icon(Icons.grid_view_rounded, size: 16),
+              label: Text('View All Available Facilities (${facilities.length})'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.primary,
+                side: BorderSide(color: AppColors.primary.withValues(alpha: 0.3)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                padding: const EdgeInsets.symmetric(vertical: 11),
+                minimumSize: const Size(double.infinity, 44),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -931,10 +1352,10 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
         children: [
           Row(
             children: const [
-              Icon(Icons.map_rounded, color: AppColors.primary, size: 18),
+              Icon(Icons.location_on_rounded, color: AppColors.primary, size: 20),
               SizedBox(width: 8),
               Text(
-                'Location & Navigation',
+                'Location & Address',
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w800,
@@ -944,64 +1365,31 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          Text(
-            _library.address,
-            style: const TextStyle(
-              fontSize: 13,
-              height: 1.4,
-              fontWeight: FontWeight.w600,
-              color: AppColors.slate800,
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AppColors.slate50,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.slate200),
             ),
-          ),
-          const SizedBox(height: 14),
-          // Google Maps Action Banner
-          InkWell(
-            onTap: _openGoogleMaps,
-            borderRadius: BorderRadius.circular(14),
-            child: Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: AppColors.primaryLight,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppColors.indigo200),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(Icons.navigation_rounded, color: Colors.white, size: 20),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
-                        Text(
-                          'Open in Google Maps',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.primaryDark,
-                          ),
-                        ),
-                        Text(
-                          'Get live walking & driving navigation',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: AppColors.slate500,
-                          ),
-                        ),
-                      ],
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.place_outlined, color: AppColors.slate500, size: 18),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _library.address,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      height: 1.4,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.slate800,
                     ),
                   ),
-                  const Icon(Icons.open_in_new_rounded, size: 16, color: AppColors.primary),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ],
@@ -1010,6 +1398,18 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
   }
 
   Widget _buildContactCard() {
+    final hasEmail = _library.contactEmail != null && _library.contactEmail!.isNotEmpty;
+    final hasWebsite = _library.websiteUrl != null && _library.websiteUrl!.isNotEmpty;
+    final hasInstagram = _library.instagramUrl != null && _library.instagramUrl!.isNotEmpty;
+    final hasFacebook = _library.facebookUrl != null && _library.facebookUrl!.isNotEmpty;
+    final hasYoutube = _library.youtubeUrl != null && _library.youtubeUrl!.isNotEmpty;
+    final hasPhone = _library.contactPhone != null && _library.contactPhone!.isNotEmpty;
+    final hasWhatsapp = _library.whatsappNumber != null && _library.whatsappNumber!.isNotEmpty;
+
+    if (!hasEmail && !hasWebsite && !hasInstagram && !hasFacebook && !hasYoutube && !hasPhone && !hasWhatsapp) {
+      return const SizedBox.shrink();
+    }
+
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -1022,7 +1422,7 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
         children: [
           Row(
             children: const [
-              Icon(Icons.contact_phone_rounded, color: AppColors.primary, size: 18),
+              Icon(Icons.contact_mail_rounded, color: AppColors.primary, size: 18),
               SizedBox(width: 8),
               Text(
                 'Business & Social Contact',
@@ -1035,41 +1435,70 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
             ],
           ),
           const SizedBox(height: 14),
-          if (_library.contactPhone != null && _library.contactPhone!.isNotEmpty)
-            _buildContactRow(
-              icon: Icons.phone_rounded,
-              title: 'Mobile Phone',
-              value: _library.contactPhone!,
-              onTap: _callPhone,
-            ),
-          if (_library.whatsappNumber != null && _library.whatsappNumber!.isNotEmpty)
-            _buildContactRow(
-              icon: Icons.chat_rounded,
-              title: 'WhatsApp Contact',
-              value: _library.whatsappNumber!,
-              onTap: _openWhatsApp,
-            ),
-          if (_library.contactEmail != null && _library.contactEmail!.isNotEmpty)
+
+          // Contact details: Email, Website, Instagram, Facebook, YouTube
+          if (hasEmail)
             _buildContactRow(
               icon: Icons.mail_rounded,
               title: 'Email Address',
               value: _library.contactEmail!,
               onTap: () => _launchUrlString(_library.contactEmail, fallbackScheme: 'mailto:'),
             ),
-          if (_library.websiteUrl != null && _library.websiteUrl!.isNotEmpty)
+          if (hasWebsite)
             _buildContactRow(
               icon: Icons.language_rounded,
               title: 'Official Website',
               value: _library.websiteUrl!,
               onTap: () => _launchUrlString(_library.websiteUrl),
             ),
-          if (_library.instagramUrl != null && _library.instagramUrl!.isNotEmpty)
+          if (hasInstagram)
             _buildContactRow(
               icon: Icons.camera_alt_rounded,
-              title: 'Instagram Handle',
+              title: 'Instagram',
               value: _library.instagramUrl!,
               onTap: () => _launchUrlString(_library.instagramUrl),
             ),
+          if (hasFacebook)
+            _buildContactRow(
+              icon: Icons.facebook_rounded,
+              title: 'Facebook Page',
+              value: _library.facebookUrl!,
+              onTap: () => _launchUrlString(_library.facebookUrl),
+            ),
+          if (hasYoutube)
+            _buildContactRow(
+              icon: Icons.video_collection_rounded,
+              title: 'YouTube Channel',
+              value: _library.youtubeUrl!,
+              onTap: () => _launchUrlString(_library.youtubeUrl),
+            ),
+          if (hasPhone || hasWhatsapp) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.slate50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.slate200),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.support_agent_rounded, size: 18, color: AppColors.slate600),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Direct Line: ${hasPhone ? _library.contactPhone : _library.whatsappNumber}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.slate700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );

@@ -150,6 +150,10 @@ class ApiService {
           userId: user?['id'] as String?,
           userName: user?['name'] as String?,
         );
+        final avatar = user?['avatarUrl']?.toString() ?? user?['avatar']?.toString() ?? user?['photo']?.toString();
+        if (avatar != null && avatar.trim().isNotEmpty) {
+          await AuthStorage.saveOwnerPhoto(avatar.trim());
+        }
         return ApiResponse(success: true, data: json);
       } else {
         return ApiResponse(
@@ -260,13 +264,18 @@ class ApiService {
         if (user != null) {
           final role = await AuthStorage.getRole();
           if (role == UserRole.admin && profile != null) {
+            final avatarUrl = user['avatarUrl']?.toString() ?? user['avatar']?.toString() ?? user['photo']?.toString();
             await AuthStorage.saveOwnerProfile(
               ownerName: user['name']?.toString() ?? '',
               libraryName: profile['name']?.toString() ?? '',
               address: profile['address']?.toString() ?? '',
               city: profile['city']?.toString() ?? 'Patna',
               totalSeats: profile['totalSeats'] is int ? profile['totalSeats'] as int : 60,
+              ownerPhoto: avatarUrl,
             );
+            if (avatarUrl != null && avatarUrl.trim().isNotEmpty) {
+              await AuthStorage.saveOwnerPhoto(avatarUrl.trim());
+            }
           } else if (role == UserRole.student && profile != null) {
             await AuthStorage.saveStudentProfile(
               fullName: user['name']?.toString() ?? '',
@@ -294,6 +303,7 @@ class ApiService {
     required String city,
     required int totalSeats,
     String? mobile,
+    String? ownerPhoto,
   }) async {
     try {
       final token = await AuthStorage.getToken();
@@ -308,6 +318,7 @@ class ApiService {
         'totalSeats': totalSeats,
         if (cleanMobile != null && cleanMobile.length == 10) 'mobile': cleanMobile,
         if (cleanMobile != null && cleanMobile.length == 10) 'countryCode': '+91',
+        if (ownerPhoto != null && ownerPhoto.isNotEmpty) 'ownerPhoto': ownerPhoto.trim(),
       });
 
       final response = await http
@@ -322,6 +333,7 @@ class ApiService {
           address: address,
           city: city,
           totalSeats: totalSeats,
+          ownerPhoto: ownerPhoto,
         );
         return ApiResponse(success: true, data: json);
       } else {
@@ -714,6 +726,7 @@ class ApiService {
     String? facebookUrl,
     String? youtubeUrl,
     List<String>? amenities,
+    String? ownerPhoto,
   }) async {
     try {
       final token = await AuthStorage.getToken();
@@ -740,6 +753,7 @@ class ApiService {
         if (facebookUrl != null) 'facebookUrl': facebookUrl.trim(),
         if (youtubeUrl != null) 'youtubeUrl': youtubeUrl.trim(),
         if (amenities != null) 'amenities': amenities,
+        if (ownerPhoto != null && ownerPhoto.isNotEmpty) 'ownerPhoto': ownerPhoto.trim(),
       });
 
       final response = await http
@@ -748,12 +762,42 @@ class ApiService {
 
       final json = jsonDecode(response.body) as Map<String, dynamic>;
       if (response.statusCode >= 200 && response.statusCode < 300) {
+        if (ownerPhoto != null && ownerPhoto.isNotEmpty) {
+          await AuthStorage.saveOwnerPhoto(ownerPhoto.trim());
+        }
         return ApiResponse(success: true, data: json);
       } else {
         return ApiResponse(
           success: false,
           code: json['code'] as String?,
           message: json['message'] as String? ?? 'Failed to update business profile',
+        );
+      }
+    } catch (e) {
+      return ApiResponse(success: false, message: _formatNetworkError(e));
+    }
+  }
+
+  /// Update owner photo directly (PUT /owner/profile/photo)
+  static Future<ApiResponse<Map<String, dynamic>>> updateOwnerPhoto(String photoUrl) async {
+    try {
+      final token = await AuthStorage.getToken();
+      final uri = Uri.parse('${ApiConfig.baseUrl}/owner/profile/photo');
+      final body = jsonEncode({'photoUrl': photoUrl.trim()});
+
+      final response = await http
+          .put(uri, headers: _buildHeaders(token: token), body: body)
+          .timeout(_timeout);
+
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        await AuthStorage.saveOwnerPhoto(photoUrl.trim());
+        return ApiResponse(success: true, data: json);
+      } else {
+        return ApiResponse(
+          success: false,
+          code: json['code'] as String?,
+          message: json['message'] as String? ?? 'Failed to update owner photo',
         );
       }
     } catch (e) {

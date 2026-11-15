@@ -90,6 +90,17 @@ class _JodoRootFlowState extends State<JodoRootFlow> {
   }
 
   Future<void> _checkSavedSession() async {
+    // 1. If a new APK was installed, wipe session so user is logged out and login page appears
+    final wasNewInstall = await AuthStorage.checkNewInstallAndClearSession();
+    if (wasNewInstall) {
+      if (mounted) {
+        setState(() {
+          _currentScreen = AppScreen.welcome;
+        });
+      }
+      return;
+    }
+
     final loggedIn = await AuthStorage.isLoggedIn();
     if (loggedIn) {
       final role = await AuthStorage.getRole();

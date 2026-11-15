@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/app_models.dart';
 import '../models/library_business_model.dart';
@@ -7,7 +9,6 @@ import '../models/library_facilities.dart';
 import '../services/api_service.dart';
 import '../services/auth_storage.dart';
 import '../theme/app_theme.dart';
-import '../widgets/brand_logo.dart';
 import '../widgets/custom_button.dart';
 import '../widgets/qr_code_widget.dart';
 import '../widgets/common_widgets.dart';
@@ -36,6 +37,7 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
 
   // Real Owner Profile State
   String _ownerName = 'Library Owner';
+  String? _ownerPhotoUrl;
   String _libraryName = 'My Study Hub';
   String _address = 'Boring Road, Patna';
   String _city = 'Patna';
@@ -53,6 +55,9 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
     final stored = await AuthStorage.getStoredProfile();
     if (mounted) {
       setState(() {
+        if (stored['ownerPhoto'] != null && stored['ownerPhoto'].toString().trim().isNotEmpty) {
+          _ownerPhotoUrl = stored['ownerPhoto'].toString().trim();
+        }
         if (stored['name'] != null && stored['name'].toString().trim().isNotEmpty) {
           _ownerName = stored['name'].toString().trim();
         }
@@ -80,6 +85,13 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
         final user = res.data!['user'] as Map<String, dynamic>?;
         final profile = res.data!['profile'] as Map<String, dynamic>?;
         setState(() {
+          if (user?['avatarUrl'] != null && user!['avatarUrl'].toString().trim().isNotEmpty) {
+            _ownerPhotoUrl = user['avatarUrl'].toString().trim();
+          } else if (user?['photoUrl'] != null && user!['photoUrl'].toString().trim().isNotEmpty) {
+            _ownerPhotoUrl = user['photoUrl'].toString().trim();
+          } else if (user?['avatar'] != null && user!['avatar'].toString().trim().isNotEmpty) {
+            _ownerPhotoUrl = user['avatar'].toString().trim();
+          }
           if (user?['name'] != null && user!['name'].toString().trim().isNotEmpty) {
             _ownerName = user['name'].toString().trim();
           }
@@ -105,7 +117,11 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
           address: _address,
           city: _city,
           totalSeats: _totalSeats,
+          ownerPhoto: _ownerPhotoUrl,
         );
+        if (_ownerPhotoUrl != null && _ownerPhotoUrl!.isNotEmpty) {
+          await AuthStorage.saveOwnerPhoto(_ownerPhotoUrl!);
+        }
       }
     } catch (_) {}
 
@@ -273,15 +289,31 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                             ),
                           ],
                         ),
+                        clipBehavior: Clip.antiAlias,
                         alignment: Alignment.center,
-                        child: Text(
-                          _getInitials(_ownerName),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 16,
-                          ),
-                        ),
+                        child: _ownerPhotoUrl != null && _ownerPhotoUrl!.isNotEmpty
+                            ? Image.network(
+                                _ownerPhotoUrl!,
+                                fit: BoxFit.cover,
+                                width: 48,
+                                height: 48,
+                                errorBuilder: (_, __, ___) => Text(
+                                  _getInitials(_ownerName),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              )
+                            : Text(
+                                _getInitials(_ownerName),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 16,
+                                ),
+                              ),
                       ),
                       const SizedBox(width: 14),
                       Column(
@@ -309,18 +341,6 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                         ],
                       ),
                     ],
-                  ),
-                  OutlinedButton(
-                    onPressed: widget.onLogout,
-                    style: OutlinedButton.styleFrom(
-                      side: BorderSide(color: Colors.white.withOpacity(0.2)),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    ),
-                    child: const Text(
-                      'Switch',
-                      style: TextStyle(color: AppColors.indigo200, fontSize: 11, fontWeight: FontWeight.w800),
-                    ),
                   ),
                 ],
               ),
@@ -1251,88 +1271,161 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
       children: [
         Container(
           width: double.infinity,
-          color: AppColors.indigo950,
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFF090D1A), // Deep midnight black
+                Color(0xFF0F172A), // Dark slate
+                Color(0xFF1E1B4B), // Deep indigo
+              ],
+            ),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Stack(
             children: [
-              const BrandLogo(compact: true, inverse: true),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Container(
-                    width: 60,
-                    height: 60,
-                    decoration: BoxDecoration(
-                      color: AppColors.orange500,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.orange500.withValues(alpha: 0.3),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
+              // JodoLibrary Branded Background Banner Watermark in Top Back of Owner Profile
+              Positioned(
+                right: -20,
+                top: -8,
+                bottom: -8,
+                child: Opacity(
+                  opacity: 0.18,
+                  child: Image.asset(
+                    'assets/images/logo_transparent.png',
+                    fit: BoxFit.contain,
+                    height: 105,
+                  ),
+                ),
+              ),
+              // Subtle Banner Brand Badge on Top Right
+              Positioned(
+                top: 14,
+                right: 18,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.15),
+                      width: 1,
                     ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      _getInitials(_ownerName),
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white,
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.verified_rounded, size: 12, color: AppColors.orange400),
+                      SizedBox(width: 4),
+                      Text(
+                        'JodoLibrary Partner',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white70,
+                          letterSpacing: 0.3,
+                        ),
                       ),
-                    ),
+                    ],
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _ownerName,
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Library Owner · $_libraryName',
-                          style: const TextStyle(fontSize: 12, color: AppColors.indigo200),
-                        ),
-                      ],
-                    ),
-                  ),
-                  InkWell(
-                    borderRadius: BorderRadius.circular(16),
-                    onTap: _openOwnerBusinessProfileScreen,
-                    child: Container(
-                      padding: const EdgeInsets.all(10),
+                ),
+              ),
+              // Main Owner Profile Row Content
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 24, 20, 22),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 60,
+                      height: 60,
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+                        color: AppColors.orange500,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.orange500.withValues(alpha: 0.3),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
                       ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.edit_rounded, color: Colors.white, size: 16),
-                          SizedBox(width: 4),
-                          Text(
-                            'Edit',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
+                      clipBehavior: Clip.antiAlias,
+                      alignment: Alignment.center,
+                      child: _ownerPhotoUrl != null && _ownerPhotoUrl!.isNotEmpty
+                          ? Image.network(
+                              _ownerPhotoUrl!,
+                              fit: BoxFit.cover,
+                              width: 60,
+                              height: 60,
+                              errorBuilder: (_, __, ___) => Text(
+                                _getInitials(_ownerName),
+                                style: const TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w900,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            )
+                          : Text(
+                              _getInitials(_ownerName),
+                              style: const TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.white,
+                              ),
                             ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _ownerName,
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          const Text(
+                            'Library Owner',
+                            style: TextStyle(fontSize: 12, color: AppColors.indigo200),
                           ),
                         ],
                       ),
                     ),
-                  ),
-                ],
+                    InkWell(
+                      borderRadius: BorderRadius.circular(16),
+                      onTap: _showEditOwnerProfileDialog,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.edit_rounded, color: Colors.white, size: 16),
+                            SizedBox(width: 4),
+                            Text(
+                              'Edit',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -1390,6 +1483,422 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Future<void> _showEditOwnerProfileDialog() async {
+    final nameCtrl = TextEditingController(text: _ownerName);
+    String? tempPhotoUrl = _ownerPhotoUrl;
+    bool isUploadingPhoto = false;
+    bool isSaving = false;
+    final picker = ImagePicker();
+
+    await showDialog(
+      context: context,
+      barrierDismissible: !isSaving && !isUploadingPhoto,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            Future<void> pickAndUploadImage(ImageSource source) async {
+              try {
+                final picked = await picker.pickImage(
+                  source: source,
+                  imageQuality: 80,
+                  maxWidth: 1024,
+                );
+                if (picked == null) return;
+
+                setDialogState(() => isUploadingPhoto = true);
+
+                final uploadRes = await ApiService.uploadLibraryPhoto(File(picked.path));
+                if (uploadRes.success && uploadRes.data != null) {
+                  setDialogState(() {
+                    tempPhotoUrl = uploadRes.data!;
+                    isUploadingPhoto = false;
+                  });
+                } else {
+                  setDialogState(() => isUploadingPhoto = false);
+                  if (mounted) {
+                    ScaffoldMessenger.of(this.context).showSnackBar(
+                      SnackBar(
+                        content: Text(uploadRes.message ?? 'Photo upload failed'),
+                        backgroundColor: AppColors.rose600,
+                      ),
+                    );
+                  }
+                }
+              } catch (e) {
+                setDialogState(() => isUploadingPhoto = false);
+                if (mounted) {
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    SnackBar(
+                      content: Text('Failed to pick photo: $e'),
+                      backgroundColor: AppColors.rose600,
+                    ),
+                  );
+                }
+              }
+            }
+
+            void showPhotoSourceSheet() {
+              showModalBottomSheet(
+                context: dialogContext,
+                backgroundColor: Colors.white,
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+                builder: (sheetContext) => SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 4,
+                          margin: const EdgeInsets.only(bottom: 16),
+                          decoration: BoxDecoration(
+                            color: AppColors.slate300,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                        const Text(
+                          'Update Profile Photo',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.slate900,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        ListTile(
+                          leading: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryLight,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(Icons.camera_alt_rounded, color: AppColors.primary),
+                          ),
+                          title: const Text('Take Photo with Camera', style: TextStyle(fontWeight: FontWeight.w700)),
+                          onTap: () {
+                            Navigator.of(sheetContext).pop();
+                            pickAndUploadImage(ImageSource.camera);
+                          },
+                        ),
+                        ListTile(
+                          leading: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: AppColors.emerald50,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(Icons.photo_library_rounded, color: AppColors.emerald600),
+                          ),
+                          title: const Text('Choose from Gallery', style: TextStyle(fontWeight: FontWeight.w700)),
+                          onTap: () {
+                            Navigator.of(sheetContext).pop();
+                            pickAndUploadImage(ImageSource.gallery);
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            return Dialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              elevation: 8,
+              backgroundColor: Colors.white,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+              child: Padding(
+                padding: const EdgeInsets.all(22),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Edit Owner Profile',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.slate900,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded, color: AppColors.slate400),
+                          onPressed: isSaving ? null : () => Navigator.of(dialogContext).pop(),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+
+                    // 1. Owner Photo with Camera Badge
+                    Stack(
+                      alignment: Alignment.bottomRight,
+                      children: [
+                        GestureDetector(
+                          onTap: isUploadingPhoto || isSaving ? null : showPhotoSourceSheet,
+                          child: Container(
+                            width: 90,
+                            height: 90,
+                            decoration: BoxDecoration(
+                              color: AppColors.orange500,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.orange500.withValues(alpha: 0.25),
+                                  blurRadius: 14,
+                                  offset: const Offset(0, 5),
+                                ),
+                              ],
+                            ),
+                            clipBehavior: Clip.antiAlias,
+                            child: isUploadingPhoto
+                                ? const Center(
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 3,
+                                    ),
+                                  )
+                                : (tempPhotoUrl != null && tempPhotoUrl!.isNotEmpty
+                                    ? Image.network(
+                                        tempPhotoUrl!,
+                                        fit: BoxFit.cover,
+                                        width: 90,
+                                        height: 90,
+                                        errorBuilder: (_, __, ___) => Center(
+                                          child: Text(
+                                            _getInitials(nameCtrl.text.isNotEmpty ? nameCtrl.text : _ownerName),
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 28,
+                                              fontWeight: FontWeight.w900,
+                                            ),
+                                          ),
+                                        ),
+                                      )
+                                    : Center(
+                                        child: Text(
+                                          _getInitials(nameCtrl.text.isNotEmpty ? nameCtrl.text : _ownerName),
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 28,
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                        ),
+                                      )),
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap: isUploadingPhoto || isSaving ? null : showPhotoSourceSheet,
+                          child: Container(
+                            padding: const EdgeInsets.all(7),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 2),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.15),
+                                  blurRadius: 6,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 16),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    GestureDetector(
+                      onTap: isUploadingPhoto || isSaving ? null : showPhotoSourceSheet,
+                      child: Text(
+                        tempPhotoUrl != null ? 'Change Photo' : 'Upload Photo',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+
+                    // 2. Owner Name Field
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Owner Full Name',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.slate700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: nameCtrl,
+                      textCapitalization: TextCapitalization.words,
+                      enabled: !isSaving,
+                      decoration: InputDecoration(
+                        hintText: 'Enter your name',
+                        hintStyle: const TextStyle(color: AppColors.slate400, fontSize: 13),
+                        prefixIcon: const Icon(Icons.person_rounded, color: AppColors.slate500, size: 20),
+                        filled: true,
+                        fillColor: AppColors.slate50,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: const BorderSide(color: AppColors.slate200),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: const BorderSide(color: AppColors.slate200),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Action Buttons
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: isSaving ? null : () => Navigator.of(dialogContext).pop(),
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: AppColors.slate300),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            ),
+                            child: const Text(
+                              'Cancel',
+                              style: TextStyle(color: AppColors.slate600, fontWeight: FontWeight.w800),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: isSaving || isUploadingPhoto
+                                ? null
+                                : () async {
+                                    final newName = nameCtrl.text.trim();
+                                    if (newName.isEmpty) {
+                                      ScaffoldMessenger.of(this.context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Please enter owner name'),
+                                          backgroundColor: AppColors.rose600,
+                                        ),
+                                      );
+                                      return;
+                                    }
+
+                                    setDialogState(() => isSaving = true);
+
+                                    try {
+                                      // 1. Update in backend
+                                      if (tempPhotoUrl != null && tempPhotoUrl!.trim().isNotEmpty) {
+                                        await ApiService.updateOwnerPhoto(tempPhotoUrl!.trim());
+                                      }
+                                      await ApiService.updateOwnerBusinessProfile(
+                                        ownerName: newName,
+                                        ownerPhoto: tempPhotoUrl,
+                                      );
+                                      await ApiService.updateOwnerProfile(
+                                        ownerName: newName,
+                                        libraryName: _libraryName,
+                                        address: _address,
+                                        city: _city,
+                                        totalSeats: _totalSeats,
+                                        ownerPhoto: tempPhotoUrl,
+                                      );
+
+                                      // 2. Persist locally
+                                      await AuthStorage.saveOwnerProfile(
+                                        ownerName: newName,
+                                        libraryName: _libraryName,
+                                        address: _address,
+                                        city: _city,
+                                        totalSeats: _totalSeats,
+                                        ownerPhoto: tempPhotoUrl,
+                                      );
+                                      if (tempPhotoUrl != null) {
+                                        await AuthStorage.saveOwnerPhoto(tempPhotoUrl!);
+                                      }
+
+                                      // 3. Update main state
+                                      if (mounted) {
+                                        setState(() {
+                                          _ownerName = newName;
+                                          if (tempPhotoUrl != null) {
+                                            _ownerPhotoUrl = tempPhotoUrl;
+                                          }
+                                        });
+                                      }
+
+                                      Navigator.of(dialogContext).pop();
+
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(this.context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('Owner profile updated successfully!'),
+                                            backgroundColor: AppColors.emerald600,
+                                          ),
+                                        );
+                                      }
+                                    } catch (e) {
+                                      setDialogState(() => isSaving = false);
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(this.context).showSnackBar(
+                                          SnackBar(
+                                            content: Text('Failed to update: $e'),
+                                            backgroundColor: AppColors.rose600,
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              elevation: 0,
+                            ),
+                            child: isSaving
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Text(
+                                    'Save Changes',
+                                    style: TextStyle(fontWeight: FontWeight.w800),
+                                  ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 

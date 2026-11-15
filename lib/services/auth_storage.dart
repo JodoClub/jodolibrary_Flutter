@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/app_models.dart';
 
@@ -17,6 +18,48 @@ class AuthStorage {
   static const String _keyGender = 'jodo_gender';
   static const String _keyStudentCode = 'jodo_student_code';
   static const String _keyDob = 'jodo_dob';
+  static const String _keyOwnerPhoto = 'jodo_owner_photo';
+  static const String _keyLastUpdateTime = 'jodo_app_last_update_time';
+
+  static const MethodChannel _installChannel = MethodChannel('com.jodo.library/app_install');
+
+  /// Detects if a new APK was installed on the device.
+  /// If so, wipes all stored sessions, logs out, and forces the user to the Login screen.
+  static Future<bool> checkNewInstallAndClearSession() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      int? currentUpdateTime;
+
+      try {
+        final res = await _installChannel.invokeMethod<Map<dynamic, dynamic>>('getInstallInfo');
+        if (res != null && res['lastUpdateTime'] != null) {
+          currentUpdateTime = (res['lastUpdateTime'] as num).toInt();
+        }
+      } catch (_) {}
+
+      // Fallback: If not on Android or channel fails, use build timestamp signature
+      currentUpdateTime ??= 2026111503;
+
+      final storedUpdateTime = prefs.getInt(_keyLastUpdateTime);
+
+      if (storedUpdateTime == null) {
+        // First ever launch of this install: record update time and clear session
+        await clearSession();
+        await prefs.setInt(_keyLastUpdateTime, currentUpdateTime);
+        return true;
+      } else if (storedUpdateTime != currentUpdateTime) {
+        // NEW APK DETECTED!
+        // Clear all session tokens and user data
+        await clearSession();
+        await prefs.setInt(_keyLastUpdateTime, currentUpdateTime);
+        return true;
+      }
+
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
 
   static Future<void> saveSession({
     required String token,
@@ -39,6 +82,7 @@ class AuthStorage {
     required String address,
     required String city,
     required int totalSeats,
+    String? ownerPhoto,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyUserName, ownerName);
@@ -46,6 +90,14 @@ class AuthStorage {
     await prefs.setString(_keyAddress, address);
     await prefs.setString(_keyCity, city);
     await prefs.setInt(_keyTotalSeats, totalSeats);
+    if (ownerPhoto != null) {
+      await prefs.setString(_keyOwnerPhoto, ownerPhoto);
+    }
+  }
+
+  static Future<void> saveOwnerPhoto(String photoUrl) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyOwnerPhoto, photoUrl);
   }
 
   static Future<void> saveStudentProfile({
@@ -79,6 +131,7 @@ class AuthStorage {
       'gender': prefs.getString(_keyGender),
       'studentCode': prefs.getString(_keyStudentCode),
       'dob': prefs.getString(_keyDob),
+      'ownerPhoto': prefs.getString(_keyOwnerPhoto),
     };
   }
 
@@ -131,5 +184,6 @@ class AuthStorage {
     await prefs.remove(_keyGender);
     await prefs.remove(_keyStudentCode);
     await prefs.remove(_keyDob);
+    await prefs.remove(_keyOwnerPhoto);
   }
 }
