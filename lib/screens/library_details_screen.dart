@@ -30,6 +30,13 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
   int _currentPhotoIndex = 0;
   final PageController _pageController = PageController();
 
+  // Live Seat Availability & Floor Status
+  bool _isLoadingSeats = false;
+  Map<String, dynamic>? _seatsSummary;
+  List<dynamic> _seatsList = [];
+  Map<String, dynamic>? _selectedSeatForDetails;
+  bool _showAllSeats = false;
+
   @override
   void initState() {
     super.initState();
@@ -65,6 +72,28 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
 
     if (widget.libraryId != null && widget.libraryId!.isNotEmpty) {
       _fetchLibraryDetails();
+      _fetchSeatAvailability(widget.libraryId!);
+    } else if (widget.initialData != null && widget.initialData!.id.isNotEmpty && widget.initialData!.id != 'default') {
+      _fetchSeatAvailability(widget.initialData!.id);
+    }
+  }
+
+  Future<void> _fetchSeatAvailability(String libId) async {
+    if (libId.isEmpty || libId == 'default') return;
+    setState(() => _isLoadingSeats = true);
+    try {
+      final res = await ApiService.getLibrarySeats(libId);
+      if (res.success && res.data != null && mounted) {
+        setState(() {
+          _seatsSummary = res.data!;
+          _seatsList = (res.data!['seats'] as List?) ?? [];
+          _isLoadingSeats = false;
+        });
+      } else if (mounted) {
+        setState(() => _isLoadingSeats = false);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoadingSeats = false);
     }
   }
 
@@ -78,6 +107,7 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
           _library = LibraryBusinessModel.fromJson(libJson);
           _isLoading = false;
         });
+        _fetchSeatAvailability(_library.id);
       } else if (mounted) {
         setState(() {
           _isLoading = false;
@@ -1549,6 +1579,15 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
   }
 
   Widget _buildPricingCard() {
+    final totalSeats = _seatsSummary?['totalSeats'] ?? _library.totalSeats;
+    final availableSeats = _seatsSummary?['availableSeats'] ?? totalSeats;
+    final occupiedSeats = _seatsSummary?['occupiedSeats'] ?? 0;
+    final reservedSeats = _seatsSummary?['reservedSeats'] ?? 0;
+
+    final displaySeats = _showAllSeats
+        ? _seatsList
+        : (_seatsList.length > 18 ? _seatsList.take(18).toList() : _seatsList);
+
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -1560,17 +1599,28 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            children: const [
-              Icon(Icons.chair_alt_rounded, color: AppColors.primary, size: 18),
-              SizedBox(width: 8),
-              Text(
-                'Desk Capacity & Membership',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.slate900,
-                ),
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: const [
+                  Icon(Icons.chair_alt_rounded, color: AppColors.primary, size: 18),
+                  SizedBox(width: 8),
+                  Text(
+                    'Desk Capacity & Live Availability',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.slate900,
+                    ),
+                  ),
+                ],
               ),
+              if (_isLoadingSeats)
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                ),
             ],
           ),
           const SizedBox(height: 14),
@@ -1579,7 +1629,7 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
               Expanded(
                 child: _buildInfoTile(
                   title: 'Total Capacity',
-                  subtitle: '${_library.totalSeats} Desks',
+                  subtitle: '$totalSeats Desks',
                   icon: Icons.meeting_room_rounded,
                 ),
               ),
@@ -1593,8 +1643,390 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
               ),
             ],
           ),
+          const SizedBox(height: 14),
+
+          // Live Seat Vacancy Badges
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+                  decoration: BoxDecoration(
+                    color: AppColors.emerald50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.emerald200),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        '$availableSeats',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.emerald700,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      const Text(
+                        'Available',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.emerald700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+                  decoration: BoxDecoration(
+                    color: AppColors.rose50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.rose200),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        '$occupiedSeats',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.rose700,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      const Text(
+                        'Occupied',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.rose700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+                  decoration: BoxDecoration(
+                    color: AppColors.amber50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.amber200),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        '$reservedSeats',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.amber800,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      const Text(
+                        'Reserved',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.amber800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          // Interactive Seat Layout & Timing Inspector
+          if (_seatsList.isNotEmpty) ...[
+            const SizedBox(height: 18),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.slate50,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.slate200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: const [
+                      Text(
+                        'Live Seat & Timing Plan',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.slate900,
+                        ),
+                      ),
+                      Text(
+                        'Tap desk for timing',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.slate500,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Grid of Desks
+                  GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: displaySeats.length,
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 6,
+                      childAspectRatio: 1.1,
+                      crossAxisSpacing: 6,
+                      mainAxisSpacing: 6,
+                    ),
+                    itemBuilder: (ctx, idx) {
+                      final seat = displaySeats[idx] as Map<String, dynamic>;
+                      final status = seat['status']?.toString() ?? 'AVAILABLE';
+                      final label = seat['label']?.toString() ?? 'D${idx + 1}';
+                      final isSelected = _selectedSeatForDetails == seat;
+
+                      Color bg;
+                      Color border;
+                      Color textCol;
+                      IconData icon;
+
+                      if (status == 'OCCUPIED') {
+                        bg = isSelected ? AppColors.rose500 : AppColors.rose50;
+                        border = AppColors.rose400;
+                        textCol = isSelected ? Colors.white : AppColors.rose700;
+                        icon = Icons.person;
+                      } else if (status == 'RESERVED') {
+                        bg = isSelected ? AppColors.amber500 : AppColors.amber50;
+                        border = AppColors.amber400;
+                        textCol = isSelected ? Colors.white : AppColors.amber800;
+                        icon = Icons.schedule;
+                      } else {
+                        bg = isSelected ? AppColors.emerald600 : AppColors.emerald50;
+                        border = AppColors.emerald400;
+                        textCol = isSelected ? Colors.white : AppColors.emerald700;
+                        icon = Icons.chair_rounded;
+                      }
+
+                      return InkWell(
+                        borderRadius: BorderRadius.circular(8),
+                        onTap: () {
+                          setState(() {
+                            if (_selectedSeatForDetails == seat) {
+                              _selectedSeatForDetails = null;
+                            } else {
+                              _selectedSeatForDetails = seat;
+                            }
+                          });
+                        },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 150),
+                          decoration: BoxDecoration(
+                            color: bg,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: isSelected ? AppColors.slate900 : border,
+                              width: isSelected ? 2 : 1,
+                            ),
+                          ),
+                          alignment: Alignment.center,
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(icon, size: 12, color: textCol),
+                              const SizedBox(height: 2),
+                              Text(
+                                label.length > 5 ? label.substring(0, 5) : label,
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w800,
+                                  color: textCol,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.clip,
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+
+                  if (_seatsList.length > 18) ...[
+                    const SizedBox(height: 6),
+                    Center(
+                      child: TextButton.icon(
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        onPressed: () => setState(() => _showAllSeats = !_showAllSeats),
+                        icon: Icon(
+                          _showAllSeats ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                          size: 16,
+                          color: AppColors.primary,
+                        ),
+                        label: Text(
+                          _showAllSeats
+                              ? 'Show Less'
+                              : 'Show All ${_seatsList.length} Desks',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+
+                  // Selected Seat Inspector Card
+                  if (_selectedSeatForDetails != null) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.slate300),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.04),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(Icons.event_seat_rounded, size: 16, color: AppColors.slate800),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    _selectedSeatForDetails!['label']?.toString() ?? 'Desk',
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w900,
+                                      color: AppColors.slate900,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: _selectedSeatForDetails!['status'] == 'OCCUPIED'
+                                      ? AppColors.rose100
+                                      : (_selectedSeatForDetails!['status'] == 'RESERVED'
+                                          ? AppColors.amber100
+                                          : AppColors.emerald100),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  _selectedSeatForDetails!['status']?.toString() ?? 'AVAILABLE',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w900,
+                                    color: _selectedSeatForDetails!['status'] == 'OCCUPIED'
+                                        ? AppColors.rose700
+                                        : (_selectedSeatForDetails!['status'] == 'RESERVED'
+                                            ? AppColors.amber800
+                                            : AppColors.emerald700),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              const Icon(Icons.access_time_rounded, size: 13, color: AppColors.slate500),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  _selectedSeatForDetails!['status'] == 'OCCUPIED'
+                                      ? (_selectedSeatForDetails!['shiftTiming'] != null &&
+                                              _selectedSeatForDetails!['shiftTiming'].toString().isNotEmpty
+                                          ? 'Shift: ${_selectedSeatForDetails!['shiftTiming']}'
+                                          : 'Shift: Full Day Allotted')
+                                      : (_selectedSeatForDetails!['status'] == 'RESERVED'
+                                          ? (_selectedSeatForDetails!['shiftTiming'] != null &&
+                                                  _selectedSeatForDetails!['shiftTiming'].toString().isNotEmpty
+                                              ? 'Reserved for: ${_selectedSeatForDetails!['shiftTiming']}'
+                                              : 'Admission Offer Pending')
+                                          : 'Vacant · Open for All Shifts (Full Day / Morning / Evening)'),
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.slate700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+
+                  // Legend
+                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _buildLegendDot(AppColors.emerald500, 'Vacant'),
+                      _buildLegendDot(AppColors.rose500, 'Occupied'),
+                      _buildLegendDot(AppColors.amber500, 'Reserved'),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
+    );
+  }
+
+  Widget _buildLegendDot(Color color, String label) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+            color: AppColors.slate600,
+          ),
+        ),
+      ],
     );
   }
 }

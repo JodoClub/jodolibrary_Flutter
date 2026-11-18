@@ -36,18 +36,96 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   String _examCategory = 'UPSC / Civil Services';
   String _emergencyContact = '';
   String _gender = 'Other';
-  String _studentCode = 'JODO-STU-8842';
-  String _activeLibrary = 'Achievers Study Hub (Desk #B-14)';
+  String _studentCode = '';
+  String _activeLibrary = 'Not enrolled';
   LibraryBusinessModel? _activeLibraryModel;
   Map<String, dynamic>? _exploreRecommended;
   List<Map<String, dynamic>> _exploreNearby = [];
   bool _isLoadingExplore = false;
+
+  // Real Pending Admission Requests & Bookings State
+  List<Map<String, dynamic>> _pendingAdmissionRequests = [];
+  bool _loadingPendingRequests = false;
+  Map<String, dynamic>? _activeMembershipData;
+  Map<String, dynamic>? _activeLibraryData;
+  bool _hasActiveMembership = false;
 
   @override
   void initState() {
     super.initState();
     _loadStudentProfileData();
     _fetchExploreLibraries();
+    _loadStudentRequestsAndBookings();
+  }
+
+  Future<void> _loadStudentRequestsAndBookings() async {
+    if (!mounted) return;
+    setState(() => _loadingPendingRequests = true);
+    try {
+      final reqRes = await ApiService.getStudentAdmissionRequests();
+      if (reqRes.success && reqRes.data != null && mounted) {
+        setState(() {
+          _pendingAdmissionRequests = reqRes.data!
+              .where((r) => r is Map<String, dynamic> && r['status'] == 'PENDING')
+              .map((r) => r as Map<String, dynamic>)
+              .toList();
+        });
+      }
+    } catch (_) {}
+
+    try {
+      final dashRes = await ApiService.getStudentDashboard();
+      if (dashRes.success && dashRes.data != null && mounted) {
+        final d = dashRes.data!;
+        final mem = d['membership'] as Map<String, dynamic>?;
+        final lib = (d['activeLibrary'] ?? d['library']) as Map<String, dynamic>?;
+        if (mem != null && lib != null) {
+          setState(() {
+            _hasActiveMembership = true;
+            _activeMembershipData = mem;
+            _activeLibraryData = lib;
+            _planValidityDate = mem['validTill']?.toString() ?? _planValidityDate;
+            if (mem['daysRemaining'] != null) {
+              _planDaysLeft = (mem['daysRemaining'] as num).toInt();
+            }
+            final seat = mem['seatLabel'] ?? 'Desk';
+            _activeLibrary = '${lib['name'] ?? "Study Hub"} ($seat)';
+          });
+        } else {
+          setState(() {
+            _hasActiveMembership = false;
+            _activeMembershipData = null;
+            _activeLibraryData = null;
+            _activeLibrary = 'Not enrolled';
+          });
+        }
+      }
+    } catch (_) {}
+
+    if (mounted) {
+      setState(() => _loadingPendingRequests = false);
+    }
+  }
+
+  Future<void> _acceptAdmissionRequest(String requestId) async {
+    final res = await ApiService.acceptAdmissionRequest(requestId);
+    if (res.success) {
+      _showToast('Admission Accepted! 🎉', 'Welcome to ${res.data?['libraryName'] ?? "your library"}!');
+      await _loadStudentRequestsAndBookings();
+      await _loadStudentProfileData();
+    } else {
+      _showToast('Failed to Accept', res.message ?? 'Please try again');
+    }
+  }
+
+  Future<void> _rejectAdmissionRequest(String requestId) async {
+    final res = await ApiService.rejectAdmissionRequest(requestId, reason: 'Declined by student');
+    if (res.success) {
+      _showToast('Request Declined', 'Admission offer was declined.');
+      await _loadStudentRequestsAndBookings();
+    } else {
+      _showToast('Failed to Decline', res.message ?? 'Please try again');
+    }
   }
 
   Future<void> _fetchExploreLibraries([String? query]) async {
@@ -152,10 +230,29 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
       if (libRes.success && libRes.data != null && mounted) {
         setState(() {
           _activeLibraryModel = LibraryBusinessModel.fromJson(libRes.data!);
-          _activeLibrary = '${_activeLibraryModel!.displayName} (Desk #B-14)';
+          if (_hasActiveMembership) {
+            final seat = _activeMembershipData?['seatLabel'] ?? 'Desk';
+            _activeLibrary = '${_activeLibraryModel!.displayName} ($seat)';
+          }
+        });
+      } else if (mounted) {
+        setState(() {
+          _activeLibraryModel = null;
+          if (!_hasActiveMembership) {
+            _activeLibrary = 'Not enrolled';
+          }
         });
       }
-    } catch (_) {}
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _activeLibraryModel = null;
+          if (!_hasActiveMembership) {
+            _activeLibrary = 'Not enrolled';
+          }
+        });
+      }
+    }
   }
 
   String _getInitials(String name) {
@@ -621,6 +718,9 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // SECTION 1.5: PENDING ADMISSION OFFERS (IF ANY)
+              _buildPendingAdmissionRequestsCard(),
+
               // SECTION 2: ACTIVE MEMBERSHIP HERO CARD
               _buildMembershipCard(),
               const SizedBox(height: 20),
@@ -642,7 +742,320 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
     );
   }
 
+  Widget _buildPendingAdmissionRequestsCard() {
+    if (_loadingPendingRequests) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 10),
+        child: Center(
+          child: SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+          ),
+        ),
+      );
+    }
+    if (_pendingAdmissionRequests.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final req in _pendingAdmissionRequests) ...[
+          Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  AppColors.orange500.withOpacity(0.08),
+                  Colors.white,
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: AppColors.orange500.withOpacity(0.35), width: 1.5),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.orange500.withOpacity(0.08),
+                  blurRadius: 14,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppColors.orange500,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          Icon(Icons.mail_rounded, size: 12, color: Colors.white),
+                          SizedBox(width: 4),
+                          Text(
+                            'ADMISSION OFFER RECEIVED',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (req['monthlyFee'] != null)
+                      Text(
+                        '₹${req['monthlyFee']}/mo',
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.indigo950,
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  req['libraryName']?.toString() ?? 'Study Hub Library',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.slate900,
+                  ),
+                ),
+                if (req['libraryAddress'] != null && req['libraryAddress'].toString().isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      const Icon(Icons.location_on_outlined, size: 13, color: AppColors.slate500),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          req['libraryAddress'].toString(),
+                          style: const TextStyle(fontSize: 11, color: AppColors.slate500),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: AppColors.indigo50,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppColors.indigo100),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.chair_rounded, size: 14, color: AppColors.indigo600),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Seat: ${req['seatNumber'] ?? 'Allotted'}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.indigo950,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (req['shiftTiming'] != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: AppColors.emerald50,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: AppColors.emerald100),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.schedule, size: 14, color: AppColors.emerald600),
+                            const SizedBox(width: 4),
+                            Text(
+                              req['shiftTiming'].toString(),
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.emerald800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    if (req['planName'] != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: AppColors.slate100,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          req['planName'].toString(),
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.slate700,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: ElevatedButton.icon(
+                        onPressed: () => _acceptAdmissionRequest(req['requestId']?.toString() ?? ''),
+                        icon: const Icon(Icons.check_circle_rounded, size: 16, color: Colors.white),
+                        label: const Text(
+                          'Accept Admission',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.emerald600,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      flex: 2,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _rejectAdmissionRequest(req['requestId']?.toString() ?? ''),
+                        icon: const Icon(Icons.close_rounded, size: 15, color: AppColors.slate600),
+                        label: const Text(
+                          'Decline',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.slate700,
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: AppColors.slate300),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   Widget _buildMembershipCard() {
+    if (!_hasActiveMembership) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(22),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: AppColors.indigo100),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.indigo950.withOpacity(0.04),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: AppColors.orange500.withOpacity(0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.chair_outlined, color: AppColors.orange500, size: 28),
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'No Active Library Membership',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: AppColors.slate900,
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'You are not currently enrolled in any library desk or shift. Once a library owner admits you or sends an offer, it will appear here.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                color: AppColors.slate500,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: () => setState(() => _activeTab = StudentTab.explore),
+              icon: const Icon(Icons.explore_outlined, size: 16, color: Colors.white),
+              label: const Text(
+                'Explore Top Libraries Near You',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  color: Colors.white,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.orange500,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final planTitle = _activeMembershipData?['planName']?.toString() ?? 'Full Day Dedicated Desk';
+    final shiftTitle = _activeMembershipData?['shiftTiming']?.toString() ?? 'Morning & Evening Shift';
+    final seatLabel = _activeMembershipData?['seatNumber']?.toString() ??
+        _activeMembershipData?['seatLabel']?.toString() ??
+        'Desk';
+    final lockerLabel = _activeMembershipData?['lockerNumber']?.toString() ?? 'Locker #L-08';
+    final validDate = _activeMembershipData?['validTill']?.toString() ?? _planValidityDate;
+    final daysRemaining = _activeMembershipData?['daysRemaining'] != null
+        ? (_activeMembershipData!['daysRemaining'] as num).toInt()
+        : _planDaysLeft;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(22),
@@ -669,52 +1082,54 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
-                  Row(
-                    children: [
-                      Icon(Icons.auto_awesome, color: AppColors.orange400, size: 14),
-                      SizedBox(width: 4),
-                      Text(
-                        'ACTIVE MEMBERSHIP',
-                        style: TextStyle(
-                          color: AppColors.orange400,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1.2,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: const [
+                        Icon(Icons.auto_awesome, color: AppColors.orange400, size: 14),
+                        SizedBox(width: 4),
+                        Text(
+                          'ACTIVE MEMBERSHIP',
+                          style: TextStyle(
+                            color: AppColors.orange400,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.2,
+                          ),
                         ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      planTitle,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
                       ),
-                    ],
-                  ),
-                  SizedBox(height: 4),
-                  Text(
-                    'Full Day Dedicated Desk',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
                     ),
-                  ),
-                  SizedBox(height: 2),
-                  Text(
-                    'Morning & Evening Shift (6:00 AM – 11:00 PM)',
-                    style: TextStyle(
-                      color: AppColors.indigo200,
-                      fontSize: 11,
+                    const SizedBox(height: 2),
+                    Text(
+                      shiftTitle,
+                      style: const TextStyle(
+                        color: AppColors.indigo200,
+                        fontSize: 11,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
-                  color: _planDaysLeft <= 5
+                  color: daysRemaining <= 5
                       ? AppColors.amber500.withOpacity(0.25)
                       : AppColors.emerald500.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: _planDaysLeft <= 5 ? AppColors.amber500 : AppColors.emerald400,
+                    color: daysRemaining <= 5 ? AppColors.amber500 : AppColors.emerald400,
                     width: 1,
                   ),
                 ),
@@ -724,7 +1139,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                     const Icon(Icons.schedule, color: AppColors.amber300, size: 12),
                     const SizedBox(width: 4),
                     Text(
-                      'Expires in $_planDaysLeft days',
+                      'Expires in $daysRemaining days',
                       style: const TextStyle(
                         color: AppColors.amber300,
                         fontSize: 10,
@@ -755,13 +1170,13 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   ],
                 ),
                 child: Row(
-                  children: const [
-                    Icon(Icons.grid_view_rounded, color: Colors.white, size: 16),
-                    SizedBox(width: 8),
+                  children: [
+                    const Icon(Icons.grid_view_rounded, color: Colors.white, size: 16),
+                    const SizedBox(width: 8),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        const Text(
                           'ASSIGNED DESK',
                           style: TextStyle(
                             color: AppColors.orange100,
@@ -770,8 +1185,8 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                           ),
                         ),
                         Text(
-                          'Seat #B-14',
-                          style: TextStyle(
+                          'Seat #$seatLabel',
+                          style: const TextStyle(
                             color: Colors.white,
                             fontSize: 12,
                             fontWeight: FontWeight.w900,
@@ -791,13 +1206,13 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   border: Border.all(color: Colors.white.withOpacity(0.12)),
                 ),
                 child: Row(
-                  children: const [
-                    Icon(Icons.lock_outline, color: AppColors.indigo200, size: 16),
-                    SizedBox(width: 8),
+                  children: [
+                    const Icon(Icons.lock_outline, color: AppColors.indigo200, size: 16),
+                    const SizedBox(width: 8),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        const Text(
                           'LOCKER SPACE',
                           style: TextStyle(
                             color: AppColors.indigo300,
@@ -806,8 +1221,8 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                           ),
                         ),
                         Text(
-                          'Locker #L-08',
-                          style: TextStyle(
+                          lockerLabel,
+                          style: const TextStyle(
                             color: Colors.white,
                             fontSize: 12,
                             fontWeight: FontWeight.w900,
@@ -843,7 +1258,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                       ),
                     ),
                     Text(
-                      'Valid till: $_planValidityDate',
+                      'Valid till: $validDate',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 12,
@@ -2302,89 +2717,243 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: AppColors.indigo100),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: AppColors.emerald50,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Text(
-                            'Active Membership',
-                            style: TextStyle(
-                              color: AppColors.emerald600,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        ),
-                        const Text(
-                          '₹1,499/mo',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w900,
-                            color: AppColors.indigo950,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Achievers Study Hub - Branch 1',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors.slate900,
+              // Pending Admission Offers (if any)
+              _buildPendingAdmissionRequestsCard(),
+
+              if (_hasActiveMembership) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: AppColors.indigo100),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.indigo950.withOpacity(0.04),
+                        blurRadius: 14,
+                        offset: const Offset(0, 4),
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'Seat #B-14 · Locker #L-08 · Full Day Shift',
-                      style: TextStyle(fontSize: 12, color: AppColors.slate500),
-                    ),
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.only(top: 14),
-                      decoration: const BoxDecoration(
-                        border: Border(top: BorderSide(color: AppColors.slate100)),
-                      ),
-                      child: Row(
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            'Valid till: $_planValidityDate',
-                            style: const TextStyle(fontSize: 12, color: AppColors.slate500),
-                          ),
-                          TextButton(
-                            onPressed: () => _openRenewPlanModal(),
-                            child: const Text(
-                              'Renew Plan',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w900,
-                                color: AppColors.orange500,
-                              ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: AppColors.emerald50,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: AppColors.emerald200),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.check_circle, size: 12, color: AppColors.emerald600),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Active Membership',
+                                  style: TextStyle(
+                                    color: AppColors.emerald600,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
+                          if (_activeMembershipData?['monthlyFee'] != null)
+                            Text(
+                              '₹${_activeMembershipData!['monthlyFee']}/mo',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w900,
+                                color: AppColors.indigo950,
+                              ),
+                            ),
                         ],
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 12),
+                      Text(
+                        _activeLibraryData?['name']?.toString() ?? 'Study Hub Library',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.slate900,
+                        ),
+                      ),
+                      if (_activeLibraryData?['address'] != null && _activeLibraryData!['address'].toString().isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          _activeLibraryData!['address'].toString(),
+                          style: const TextStyle(fontSize: 12, color: AppColors.slate500),
+                        ),
+                      ],
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: AppColors.orange50,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: AppColors.orange200),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.chair_rounded, size: 14, color: AppColors.orange600),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Seat: ${_activeMembershipData?['seatNumber'] ?? _activeMembershipData?['seatLabel'] ?? 'Desk'}',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.orange900,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (_activeMembershipData?['shiftTiming'] != null)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: AppColors.indigo50,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: AppColors.indigo100),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.schedule, size: 14, color: AppColors.indigo600),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    _activeMembershipData!['shiftTiming'].toString(),
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
+                                      color: AppColors.indigo900,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          if (_activeMembershipData?['planName'] != null)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: AppColors.slate100,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                _activeMembershipData!['planName'].toString(),
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.slate700,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.only(top: 14),
+                        decoration: const BoxDecoration(
+                          border: Border(top: BorderSide(color: AppColors.slate100)),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Valid till: ${_activeMembershipData?['validTill']?.toString() ?? _planValidityDate}',
+                              style: const TextStyle(fontSize: 12, color: AppColors.slate500, fontWeight: FontWeight.w600),
+                            ),
+                            Row(
+                              children: [
+                                TextButton(
+                                  onPressed: () => _openRenewPlanModal(),
+                                  child: const Text(
+                                    'Renew Plan',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w900,
+                                      color: AppColors.orange500,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                ElevatedButton.icon(
+                                  onPressed: () => _openQRModal(),
+                                  icon: const Icon(Icons.qr_code, size: 14, color: Colors.white),
+                                  label: const Text(
+                                    'Gate Pass',
+                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white),
+                                  ),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.indigo950,
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                    minimumSize: Size.zero,
+                                    elevation: 0,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
+              ] else if (_pendingAdmissionRequests.isEmpty) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: AppColors.slate200),
+                  ),
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 60,
+                        height: 60,
+                        decoration: BoxDecoration(
+                          color: AppColors.indigo50,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.bookmark_outline_rounded, color: AppColors.indigo600, size: 30),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'No Active Bookings',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.slate900,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'You do not have any active desk reservations or admission offers at the moment.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.slate500,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 16),
               CustomButton(
                 label: 'Book Another Desk or Shift',
@@ -2538,144 +3107,190 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                     const SizedBox(height: 14),
                     _buildProfileRow('Full Name', _studentName),
                     _buildProfileRow('Mobile', _studentPhone.isNotEmpty ? _studentPhone : '+91 98765 43210'),
-                    _buildProfileRow('Active Library', _activeLibrary, onTap: _openActiveLibraryDetails),
-                    _buildProfileRow('Student ID', _studentCode),
+                    _buildProfileRow('Active Library', _activeLibrary, onTap: _hasActiveMembership ? _openActiveLibraryDetails : null),
+                    _buildProfileRow('Student ID', _studentCode.isNotEmpty ? _studentCode : 'Pending Admission'),
                     _buildProfileRow('Target Exam', _examCategory),
                     _buildProfileRow('Emergency Contact', _emergencyContact.isNotEmpty ? _emergencyContact : 'Not specified'),
                     _buildProfileRow('Gender', _gender),
-                    _buildProfileRow('Status', 'Active Member', isStatus: true),
+                    _buildProfileRow('Status', _hasActiveMembership ? 'Active Member' : 'Not Enrolled', isStatus: true),
                   ],
                 ),
               ),
               const SizedBox(height: 14),
 
               // Enrolled Library Card
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: AppColors.orange500.withOpacity(0.3)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.orange500.withOpacity(0.06),
-                      blurRadius: 14,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              width: 36,
-                              height: 36,
-                              decoration: BoxDecoration(
-                                color: AppColors.orange500.withOpacity(0.12),
-                                borderRadius: BorderRadius.circular(12),
+              if (_hasActiveMembership)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: AppColors.orange500.withOpacity(0.3)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.orange500.withOpacity(0.06),
+                        blurRadius: 14,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: AppColors.orange500.withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                alignment: Alignment.center,
+                                child: const Icon(Icons.apartment, color: AppColors.orange500, size: 20),
                               ),
-                              alignment: Alignment.center,
-                              child: const Icon(Icons.apartment, color: AppColors.orange500, size: 20),
+                              const SizedBox(width: 10),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: const [
+                                  Text(
+                                    'MY ENROLLED LIBRARY',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w900,
+                                      color: AppColors.orange500,
+                                      letterSpacing: 1.1,
+                                    ),
+                                  ),
+                                  Text(
+                                    'Google Business Details',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w800,
+                                      color: AppColors.slate900,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: AppColors.emerald500.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(12),
                             ),
-                            const SizedBox(width: 10),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: const [
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                CircleAvatar(radius: 3, backgroundColor: AppColors.emerald500),
+                                SizedBox(width: 4),
                                 Text(
-                                  'MY ENROLLED LIBRARY',
+                                  'Enrolled',
                                   style: TextStyle(
                                     fontSize: 10,
-                                    fontWeight: FontWeight.w900,
-                                    color: AppColors.orange500,
-                                    letterSpacing: 1.1,
-                                  ),
-                                ),
-                                Text(
-                                  'Google Business Details',
-                                  style: TextStyle(
-                                    fontSize: 12,
                                     fontWeight: FontWeight.w800,
-                                    color: AppColors.slate900,
+                                    color: AppColors.emerald600,
                                   ),
                                 ),
                               ],
                             ),
-                          ],
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: AppColors.emerald500.withOpacity(0.12),
-                            borderRadius: BorderRadius.circular(12),
                           ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              CircleAvatar(radius: 3, backgroundColor: AppColors.emerald500),
-                              SizedBox(width: 4),
-                              Text(
-                                'Enrolled',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppColors.emerald600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      _activeLibraryModel?.displayName ?? 'Achievers Study Hub - Branch 1',
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors.slate900,
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      _activeLibraryModel != null
-                          ? '${_activeLibraryModel!.address}, ${_activeLibraryModel!.city}'
-                          : 'Boring Road, Patna, Bihar',
-                      style: const TextStyle(fontSize: 11, color: AppColors.slate500),
-                    ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 6,
-                      children: [
-                        _buildStudentLibChip(
-                          Icons.schedule_outlined,
-                          _activeLibraryModel?.timing ?? '24×7 Open',
+                      const SizedBox(height: 12),
+                      Text(
+                        _activeLibraryData?['name']?.toString() ??
+                            _activeLibraryModel?.displayName ??
+                            'My Library',
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.slate900,
                         ),
-                        _buildStudentLibChip(
-                          Icons.checklist_rounded,
-                          '${_activeLibraryModel?.amenities.length ?? 24} Facilities',
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _activeLibraryData?['address']?.toString() ??
+                            (_activeLibraryModel != null
+                                ? '${_activeLibraryModel!.address}, ${_activeLibraryModel!.city}'
+                                : ''),
+                        style: const TextStyle(fontSize: 11, color: AppColors.slate500),
+                      ),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        children: [
+                          _buildStudentLibChip(
+                            Icons.chair_alt_rounded,
+                            _activeMembershipData?['seatLabel'] ?? 'Desk Assigned',
+                          ),
+                          _buildStudentLibChip(
+                            Icons.schedule_outlined,
+                            _activeMembershipData?['shiftTiming'] ?? _activeLibraryModel?.timing ?? '24×7 Open',
+                          ),
+                          _buildStudentLibChip(
+                            Icons.map_outlined,
+                            'Live Map Nav',
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      CustomButton(
+                        label: 'View Photos, Map & All Facilities',
+                        leading: const Icon(Icons.storefront_rounded, size: 16),
+                        onPressed: _openActiveLibraryDetails,
+                      ),
+                    ],
+                  ),
+                )
+              else
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: AppColors.slate200),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: AppColors.indigo50,
+                          borderRadius: BorderRadius.circular(16),
                         ),
-                        _buildStudentLibChip(
-                          Icons.map_outlined,
-                          'Live Map Nav',
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    CustomButton(
-                      label: 'View Photos, Map & All Facilities',
-                      leading: const Icon(Icons.storefront_rounded, size: 16),
-                      onPressed: _openActiveLibraryDetails,
-                    ),
-                  ],
+                        alignment: Alignment.center,
+                        child: const Icon(Icons.storefront_outlined, color: AppColors.indigo950, size: 24),
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Not Enrolled in Any Library',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: AppColors.slate900),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Find top-rated libraries nearby with verified WiFi, AC, and quiet study zones.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 11.5, color: AppColors.slate500, height: 1.4),
+                      ),
+                      const SizedBox(height: 16),
+                      CustomButton(
+                        label: 'Explore Libraries Near Me',
+                        leading: const Icon(Icons.explore_outlined, size: 16),
+                        onPressed: () => setState(() => _activeTab = StudentTab.explore),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
               const SizedBox(height: 18),
               CustomButton(
                 label: 'Log out / Switch account',

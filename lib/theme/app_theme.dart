@@ -21,15 +21,21 @@ class AppColors {
   static const Color indigo950 = Color(0xFF090D16); // Deep sleek black/dark container
   static const Color indigo900 = Color(0xFF0F172A);
   static const Color indigo800 = Color(0xFF0F4DD2); // Primary
+  static const Color indigo600 = Color(0xFF2563EB);
   static const Color indigo50 = Color(0xFFEEF3FF);  // Primary soft tint
   static const Color indigo100 = Color(0xFFDBE6FE);
   static const Color indigo200 = Color(0xFFB5CDFD);
   static const Color indigo300 = Color(0xFF8FB5FC);
 
   // Orange mappings (re-routed to Primary #0F4DD2 & Secondary #26B891 so all primary CTAs, buttons, and borders update)
-  static const Color orange500 = Color(0xFF0F4DD2); // Primary #0F4DD2
+  static const Color orange900 = Color(0xFF0A2B7A);
+  static const Color orange800 = Color(0xFF0A3399);
+  static const Color orange700 = Color(0xFF0A39A5);
   static const Color orange600 = Color(0xFF0A3EB2);
+  static const Color orange500 = Color(0xFF0F4DD2); // Primary #0F4DD2
   static const Color orange400 = Color(0xFF26B891); // Secondary accent #26B891
+  static const Color orange300 = Color(0xFF93C5FD);
+  static const Color orange200 = Color(0xFFBFDBFE);
   static const Color orange100 = Color(0xFFDBE6FE);
   static const Color orange50 = Color(0xFFEEF3FF);
 
@@ -47,24 +53,33 @@ class AppColors {
   static const Color slate50 = Color(0xFFF8FAFC);
 
   // Emerald mappings (re-routed to Secondary #26B891)
+  static const Color emerald800 = Color(0xFF065F46);
+  static const Color emerald700 = Color(0xFF0F766E);
   static const Color emerald600 = Color(0xFF1E9C7A);
   static const Color emerald500 = Color(0xFF26B891); // Secondary #26B891
   static const Color emerald400 = Color(0xFF48C9A6);
   static const Color emerald300 = Color(0xFF78DCC2);
+  static const Color emerald200 = Color(0xFFA7F3D0);
   static const Color emerald100 = Color(0xFFD3F4EB);
   static const Color emerald50 = Color(0xFFECF9F5);
 
   // Amber (warning/attention)
+  static const Color amber800 = Color(0xFF92400E);
+  static const Color amber700 = Color(0xFFB45309);
   static const Color amber600 = Color(0xFFD97706);
   static const Color amber500 = Color(0xFFF59E0B);
   static const Color amber400 = Color(0xFFFBBF24);
   static const Color amber300 = Color(0xFFFCD34D);
+  static const Color amber200 = Color(0xFFFDE68A);
   static const Color amber100 = Color(0xFFFEF3C7);
   static const Color amber50 = Color(0xFFFFFBEB);
 
   // Rose (error/destructive)
+  static const Color rose700 = Color(0xFFBE123C);
   static const Color rose600 = Color(0xFFE11D48);
   static const Color rose500 = Color(0xFFF43F5E);
+  static const Color rose400 = Color(0xFFFB7185);
+  static const Color rose200 = Color(0xFFFECDD3);
   static const Color rose100 = Color(0xFFFFE4E6);
   static const Color rose50 = Color(0xFFFFF1F2);
 }

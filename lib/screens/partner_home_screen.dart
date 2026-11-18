@@ -31,7 +31,7 @@ class PartnerHomeScreen extends StatefulWidget {
 
 class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
   PartnerTab _activeTab = PartnerTab.overview;
-  int _selectedSeat = 14;
+  int _selectedSeat = 1;
   String _seatFilter = 'all'; // 'all', 'occupied', 'reserved', 'available'
   String _memberSearch = '';
 
@@ -45,10 +45,73 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
   String _ownerPhone = '';
   LibraryBusinessModel? _businessProfile;
 
+  // Real Members & Admission Requests State
+  List<MemberInfo> _members = [];
+  List<Map<String, dynamic>> _pendingRequests = [];
+  bool _loadingMembers = false;
+  bool _loadingFloorMap = false;
+  List<SeatInfo> _floorMapSeats = [];
+  int _occupiedSeatsCount = 0;
+  int _reservedSeatsCount = 0;
+
   @override
   void initState() {
     super.initState();
     _loadProfileData();
+    _loadMembersData();
+    _loadFloorMapData();
+  }
+
+  Future<void> _loadMembersData() async {
+    if (!mounted) return;
+    setState(() => _loadingMembers = true);
+    try {
+      final res = await ApiService.getMembers(size: 100);
+      if (res.success && res.data != null && mounted) {
+        final list = (res.data!['members'] as List?) ?? [];
+        setState(() {
+          _members = list.map((m) => MemberInfo.fromJson(m as Map<String, dynamic>)).toList();
+        });
+      }
+    } catch (_) {}
+
+    try {
+      final reqRes = await ApiService.getOwnerAdmissionRequests();
+      if (reqRes.success && reqRes.data != null && mounted) {
+        setState(() {
+          _pendingRequests = reqRes.data!
+              .where((r) => r is Map<String, dynamic> && r['status'] == 'PENDING')
+              .map((r) => r as Map<String, dynamic>)
+              .toList();
+        });
+      }
+    } catch (_) {}
+
+    if (mounted) {
+      setState(() => _loadingMembers = false);
+    }
+  }
+
+  Future<void> _loadFloorMapData() async {
+    if (!mounted) return;
+    setState(() => _loadingFloorMap = true);
+    try {
+      final res = await ApiService.getFloorMap(filter: _seatFilter);
+      if (res.success && res.data != null && mounted) {
+        final seatsList = (res.data!['seats'] as List?) ?? [];
+        setState(() {
+          _floorMapSeats = seatsList.map((s) => SeatInfo.fromJson(s as Map<String, dynamic>)).toList();
+          _occupiedSeatsCount = (res.data!['occupied'] as num?)?.toInt() ?? 0;
+          _reservedSeatsCount = (res.data!['reserved'] as num?)?.toInt() ?? 0;
+          if (res.data!['totalSeats'] != null) {
+            _totalSeats = (res.data!['totalSeats'] as num).toInt();
+          }
+        });
+      }
+    } catch (_) {}
+    if (mounted) {
+      setState(() => _loadingFloorMap = false);
+    }
   }
 
   Future<void> _loadProfileData() async {
@@ -161,64 +224,21 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
     return 'Partner';
   }
 
-  // Add Member State
-  final List<MemberInfo> _members = [
-    const MemberInfo(name: 'Aarav Kumar', seat: 'Seat #B-14', status: 'Present', plan: 'Full Day Dedicated', phone: '+91 98765 43210'),
-    const MemberInfo(name: 'Ananya Verma', seat: 'Seat #B-24', status: 'Present', plan: 'Morning Shift', phone: '+91 98111 22334'),
-    const MemberInfo(name: 'Rahul Kumar', seat: 'Seat #A-06', status: 'Present', plan: 'Full Day Dedicated', phone: '+91 97222 33445'),
-    const MemberInfo(name: 'Priya Singh', seat: 'Seat #C-12', status: 'Renewal Due', plan: 'Evening Shift', phone: '+91 99333 44556'),
-    const MemberInfo(name: 'Vikram Raj', seat: 'Seat #A-18', status: 'Absent', plan: 'Full Day Dedicated', phone: '+91 98444 55667'),
-    const MemberInfo(name: 'Sneha Roy', seat: 'Seat #B-02', status: 'Present', plan: 'Morning Shift', phone: '+91 97555 66778'),
-  ];
-
   SeatInfo _getSeatInfo(int num) {
-    if (num == 14) {
-      return SeatInfo(
-        number: num,
-        student: 'Aarav Kumar',
-        plan: 'Full Day Dedicated Desk',
-        status: 'Occupied · Present Inside',
-        time: 'Checked in at 08:15 AM',
-        validTill: '25/10/2026',
-      );
-    }
-    if (num == 24) {
-      return SeatInfo(
-        number: num,
-        student: 'Ananya Verma',
-        plan: 'Morning Shift (6AM - 2PM)',
-        status: 'Occupied · Present Inside',
-        time: 'Checked in at 09:42 AM',
-        validTill: '30/10/2026',
-      );
-    }
-    if (num <= 42) {
-      return SeatInfo(
-        number: num,
-        student: 'Student #$num',
-        plan: 'Monthly Dedicated Desk',
-        status: 'Occupied',
-        time: 'Checked in today',
-        validTill: '15/11/2026',
-      );
-    }
-    if (num <= 48) {
-      return SeatInfo(
-        number: num,
-        student: 'Reserved Desk',
-        plan: 'Reserved for Walk-in Booking',
-        status: 'Reserved',
-        time: 'Available from Evening',
-        validTill: 'N/A',
-      );
+    if (_floorMapSeats.isNotEmpty) {
+      final matches = _floorMapSeats.where((s) => s.number == num);
+      if (matches.isNotEmpty) {
+        return matches.first;
+      }
     }
     return SeatInfo(
       number: num,
-      student: 'Unallocated',
-      plan: 'Open for New Admission',
+      student: 'Desk #$num',
+      plan: 'Open for Admission',
       status: 'Available',
       time: 'Empty desk',
       validTill: 'N/A',
+      shiftTiming: 'Available all shifts',
     );
   }
 
@@ -395,9 +415,9 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                         color: AppColors.emerald500.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: const Text(
-                        '42/60 Occupied',
-                        style: TextStyle(
+                      child: Text(
+                        '$_occupiedSeatsCount/$_totalSeats Occupied',
+                        style: const TextStyle(
                           color: AppColors.emerald300,
                           fontSize: 10,
                           fontWeight: FontWeight.w800,
@@ -452,154 +472,176 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
               ),
               const SizedBox(height: 18),
 
-              // 4 Stat Cards in 2x2 grid
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildOwnerStatCard(
-                      icon: Icons.people_alt,
-                      tag: '+12 new',
-                      tagColor: AppColors.emerald600,
-                      tagBg: AppColors.emerald50,
-                      label: 'ACTIVE MEMBERS',
-                      val: '148',
-                      iconBg: AppColors.indigo50,
-                      iconColor: AppColors.indigo950,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _buildOwnerStatCard(
-                      icon: Icons.grid_view_rounded,
-                      tag: '70% full',
-                      tagColor: AppColors.orange600,
-                      tagBg: AppColors.orange50,
-                      label: 'LIVE OCCUPANCY',
-                      val: '42 / 60',
-                      iconBg: AppColors.orange50,
-                      iconColor: AppColors.orange600,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildOwnerStatCard(
-                      icon: Icons.account_balance_wallet,
-                      tag: '₹2.18L mo',
-                      tagColor: AppColors.indigo800,
-                      tagBg: AppColors.indigo50,
-                      label: 'TODAY COLLECTION',
-                      val: '₹18,400',
-                      iconBg: AppColors.emerald50,
-                      iconColor: AppColors.emerald600,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _buildOwnerStatCard(
-                      icon: Icons.event,
-                      tag: '7 Days',
-                      tagColor: AppColors.rose600,
-                      tagBg: AppColors.rose50,
-                      label: 'RENEWALS DUE',
-                      val: '18',
-                      iconBg: AppColors.rose50,
-                      iconColor: AppColors.rose600,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
+              // Dynamic calculations for seat occupancy
+              Builder(
+                builder: (context) {
+                  final totalSeats = _totalSeats > 0 ? _totalSeats : 10;
+                  final occupied = _occupiedSeatsCount.clamp(0, totalSeats);
+                  final reserved = _reservedSeatsCount.clamp(0, totalSeats - occupied);
+                  final available = (totalSeats - occupied - reserved).clamp(0, totalSeats);
+                  final occFlex = totalSeats > 0 ? (occupied * 100 ~/ totalSeats) : 0;
+                  final resFlex = totalSeats > 0 ? (reserved * 100 ~/ totalSeats) : 0;
+                  final availFlex = (100 - occFlex - resFlex).clamp(0, 100);
 
-              // Live Seat Occupancy Bar Card
-              Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: AppColors.slate200),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: const [
-                            Text(
-                              'LIVE FLOOR STATUS',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w900,
-                                color: AppColors.slate400,
-                                letterSpacing: 1,
-                              ),
-                            ),
-                            SizedBox(height: 2),
-                            Text(
-                              'Seat Occupancy',
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w900,
-                                color: AppColors.slate900,
-                              ),
-                            ),
-                          ],
-                        ),
-                        TextButton.icon(
-                          onPressed: () => setState(() => _activeTab = PartnerTab.seats),
-                          icon: const Icon(Icons.map_outlined, size: 14, color: AppColors.orange500),
-                          label: const Text(
-                            'Floor Map',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w900,
-                              color: AppColors.orange500,
+                  return Column(
+                    children: [
+                      // 4 Stat Cards in 2x2 grid
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildOwnerStatCard(
+                              icon: Icons.people_alt,
+                              tag: '${_members.length} enrolled',
+                              tagColor: AppColors.emerald600,
+                              tagBg: AppColors.emerald50,
+                              label: 'ACTIVE MEMBERS',
+                              val: '${_members.length}',
+                              iconBg: AppColors.indigo50,
+                              iconColor: AppColors.indigo950,
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: const [
-                        Text('Occupied: 42', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.slate700)),
-                        Text('Available: 18', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.slate500)),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _buildOwnerStatCard(
+                              icon: Icons.grid_view_rounded,
+                              tag: '${totalSeats == 0 ? 0 : (occupied * 100 ~/ totalSeats)}% full',
+                              tagColor: AppColors.orange600,
+                              tagBg: AppColors.orange50,
+                              label: 'LIVE OCCUPANCY',
+                              val: '$occupied / $totalSeats',
+                              iconBg: AppColors.orange50,
+                              iconColor: AppColors.orange600,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildOwnerStatCard(
+                              icon: Icons.account_balance_wallet,
+                              tag: '₹2.18L mo',
+                              tagColor: AppColors.indigo800,
+                              tagBg: AppColors.indigo50,
+                              label: 'TODAY COLLECTION',
+                              val: '₹18,400',
+                              iconBg: AppColors.emerald50,
+                              iconColor: AppColors.emerald600,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _buildOwnerStatCard(
+                              icon: Icons.event,
+                              tag: '7 Days',
+                              tagColor: AppColors.rose600,
+                              tagBg: AppColors.rose50,
+                              label: 'RENEWALS DUE',
+                              val: '18',
+                              iconBg: AppColors.rose50,
+                              iconColor: AppColors.rose600,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
 
-                    // Progress Bar (70% Occupied, 10% Reserved, 20% Available)
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: SizedBox(
-                        height: 10,
-                        child: Row(
-                          children: const [
-                            Expanded(flex: 70, child: ColoredBox(color: AppColors.indigo950)),
-                            Expanded(flex: 10, child: ColoredBox(color: AppColors.orange400)),
-                            Expanded(flex: 20, child: ColoredBox(color: AppColors.slate200)),
+                      // Live Seat Occupancy Bar Card
+                      Container(
+                        padding: const EdgeInsets.all(18),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(color: AppColors.slate200),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: const [
+                                    Text(
+                                      'LIVE FLOOR STATUS',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w900,
+                                        color: AppColors.slate400,
+                                        letterSpacing: 1,
+                                      ),
+                                    ),
+                                    SizedBox(height: 2),
+                                    Text(
+                                      'Seat Occupancy',
+                                      style: TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w900,
+                                        color: AppColors.slate900,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                TextButton.icon(
+                                  onPressed: () => setState(() => _activeTab = PartnerTab.seats),
+                                  icon: const Icon(Icons.map_outlined, size: 14, color: AppColors.orange500),
+                                  label: const Text(
+                                    'Floor Map',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w900,
+                                      color: AppColors.orange500,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text('Occupied: $occupied', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.slate700)),
+                                Text('Available: $available', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.slate500)),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+
+                            // Progress Bar
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: SizedBox(
+                                height: 10,
+                                child: Row(
+                                  children: [
+                                    if (occFlex > 0)
+                                      Expanded(flex: occFlex, child: const ColoredBox(color: AppColors.indigo950)),
+                                    if (resFlex > 0)
+                                      Expanded(flex: resFlex, child: const ColoredBox(color: AppColors.orange400)),
+                                    if (availFlex > 0)
+                                      Expanded(flex: availFlex, child: const ColoredBox(color: AppColors.slate200)),
+                                    if (occFlex == 0 && resFlex == 0 && availFlex == 0)
+                                      const Expanded(child: ColoredBox(color: AppColors.slate200)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                _DotLegend(color: AppColors.indigo950, label: '$occupied Occupied'),
+                                _DotLegend(color: AppColors.orange400, label: '$reserved Reserved'),
+                                _DotLegend(color: AppColors.slate300, label: '$available Available'),
+                              ],
+                            ),
                           ],
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: const [
-                        _DotLegend(color: AppColors.indigo950, label: '42 Occupied'),
-                        _DotLegend(color: AppColors.orange400, label: '6 Reserved'),
-                        _DotLegend(color: AppColors.slate300, label: '12 Available'),
-                      ],
-                    ),
-                  ],
-                ),
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 18),
 
@@ -852,7 +894,9 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
   // TAB 2: SEATS & FLOOR MAP
   // ==========================================
   Widget _buildSeatsTab() {
+    final totalSeats = _totalSeats > 0 ? _totalSeats : 10;
     final seatData = _getSeatInfo(_selectedSeat);
+    final availCount = (totalSeats - _occupiedSeatsCount - _reservedSeatsCount).clamp(0, totalSeats);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -881,9 +925,9 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                       color: AppColors.emerald500.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(20),
                     ),
-                    child: const Text(
-                      '60 Total Desks',
-                      style: TextStyle(
+                    child: Text(
+                      '$totalSeats Total Desks',
+                      style: const TextStyle(
                         color: AppColors.emerald300,
                         fontSize: 10,
                         fontWeight: FontWeight.w900,
@@ -894,7 +938,7 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
               ),
               const SizedBox(height: 4),
               const Text(
-                'Tap any desk to see member allocation',
+                'Tap any desk to see member allocation and shift timings',
                 style: TextStyle(color: AppColors.indigo200, fontSize: 11),
               ),
               const SizedBox(height: 14),
@@ -904,10 +948,10 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                 scrollDirection: Axis.horizontal,
                 child: Row(
                   children: [
-                    _buildFilterPill('all', 'All (60)'),
-                    _buildFilterPill('occupied', 'Occupied (42)'),
-                    _buildFilterPill('reserved', 'Reserved (6)'),
-                    _buildFilterPill('available', 'Available (12)'),
+                    _buildFilterPill('all', 'All ($totalSeats)'),
+                    _buildFilterPill('occupied', 'Occupied ($_occupiedSeatsCount)'),
+                    _buildFilterPill('reserved', 'Reserved ($_reservedSeatsCount)'),
+                    _buildFilterPill('available', 'Available ($availCount)'),
                   ],
                 ),
               ),
@@ -919,7 +963,7 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
           padding: const EdgeInsets.all(20),
           child: Column(
             children: [
-              // 60-seats Grid
+              // Seats Grid
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -927,62 +971,71 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                   borderRadius: BorderRadius.circular(24),
                   border: Border.all(color: AppColors.slate200),
                 ),
-                child: GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 6,
-                    mainAxisSpacing: 8,
-                    crossAxisSpacing: 8,
-                  ),
-                  itemCount: 60,
-                  itemBuilder: (ctx, i) {
-                    final num = i + 1;
-                    final isOccupied = num <= 42;
-                    final isReserved = num > 42 && num <= 48;
-                    final isAvailable = num > 48;
-
-                    if (_seatFilter == 'occupied' && !isOccupied) return const SizedBox();
-                    if (_seatFilter == 'reserved' && !isReserved) return const SizedBox();
-                    if (_seatFilter == 'available' && !isAvailable) return const SizedBox();
-
-                    final isSelected = _selectedSeat == num;
-
-                    Color bg = isOccupied
-                        ? AppColors.indigo950
-                        : isReserved
-                            ? AppColors.orange100
-                            : AppColors.slate100;
-                    Color txt = isOccupied
-                        ? Colors.white
-                        : isReserved
-                            ? AppColors.orange600
-                            : AppColors.slate500;
-
-                    return InkWell(
-                      borderRadius: BorderRadius.circular(10),
-                      onTap: () => setState(() => _selectedSeat = num),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: bg,
-                          borderRadius: BorderRadius.circular(10),
-                          border: isSelected
-                              ? Border.all(color: AppColors.orange500, width: 2.5)
-                              : null,
+                child: _loadingFloorMap
+                    ? const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(24),
+                          child: CircularProgressIndicator(color: AppColors.orange500),
                         ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          '$num',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w900,
-                            color: txt,
-                          ),
+                      )
+                    : GridView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 6,
+                          mainAxisSpacing: 8,
+                          crossAxisSpacing: 8,
                         ),
+                        itemCount: totalSeats,
+                        itemBuilder: (ctx, i) {
+                          final num = i + 1;
+                          final seat = _getSeatInfo(num);
+                          final stLower = seat.status.toLowerCase();
+                          final isOccupied = stLower.contains('occupied');
+                          final isReserved = stLower.contains('reserved');
+                          final isAvailable = !isOccupied && !isReserved;
+
+                          if (_seatFilter == 'occupied' && !isOccupied) return const SizedBox();
+                          if (_seatFilter == 'reserved' && !isReserved) return const SizedBox();
+                          if (_seatFilter == 'available' && !isAvailable) return const SizedBox();
+
+                          final isSelected = _selectedSeat == num;
+
+                          Color bg = isOccupied
+                              ? AppColors.indigo950
+                              : isReserved
+                                  ? AppColors.orange100
+                                  : AppColors.slate100;
+                          Color txt = isOccupied
+                              ? Colors.white
+                              : isReserved
+                                  ? AppColors.orange600
+                                  : AppColors.slate500;
+
+                          return InkWell(
+                            borderRadius: BorderRadius.circular(10),
+                            onTap: () => setState(() => _selectedSeat = num),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: bg,
+                                borderRadius: BorderRadius.circular(10),
+                                border: isSelected
+                                    ? Border.all(color: AppColors.orange500, width: 2.5)
+                                    : null,
+                              ),
+                              alignment: Alignment.center,
+                              child: Text(
+                                '$num',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w900,
+                                  color: txt,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
                       ),
-                    );
-                  },
-                ),
               ),
               const SizedBox(height: 18),
 
@@ -1036,6 +1089,8 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                     const SizedBox(height: 14),
                     _buildSeatRow('Student Name', seatData.student),
                     _buildSeatRow('Membership Plan', seatData.plan),
+                    if (seatData.shiftTiming != null && seatData.shiftTiming!.isNotEmpty)
+                      _buildSeatRow('Shift Timing', seatData.shiftTiming!),
                     _buildSeatRow('Validity', seatData.validTill, isGreen: true),
                   ],
                 ),
@@ -1096,7 +1151,7 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
   // ==========================================
   Widget _buildMembersTab() {
     final filtered = _members.where((m) {
-      return '${m.name} ${m.seat} ${m.plan}'.toLowerCase().contains(_memberSearch.toLowerCase());
+      return '${m.name} ${m.seat} ${m.plan} ${m.phone}'.toLowerCase().contains(_memberSearch.toLowerCase());
     }).toList();
 
     return Column(
@@ -1137,9 +1192,9 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                 ],
               ),
               const SizedBox(height: 4),
-              const Text(
-                'Manage 148 registered study hub members',
-                style: TextStyle(color: AppColors.indigo200, fontSize: 11),
+              Text(
+                'Manage ${_members.length} registered study hub members',
+                style: const TextStyle(color: AppColors.indigo200, fontSize: 11),
               ),
               const SizedBox(height: 14),
 
@@ -1167,95 +1222,421 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
         Padding(
           padding: const EdgeInsets.all(20),
           child: Column(
-            children: filtered.map((m) {
-              Color statusBg = AppColors.slate100;
-              Color statusColor = AppColors.slate600;
-
-              if (m.status == 'Present') {
-                statusBg = AppColors.emerald50;
-                statusColor = AppColors.emerald600;
-              } else if (m.status == 'Renewal Due') {
-                statusBg = AppColors.amber50;
-                statusColor = AppColors.amber600;
-              }
-
-              return Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: AppColors.slate200),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 42,
-                          height: 42,
-                          decoration: BoxDecoration(
-                            color: AppColors.indigo50,
-                            borderRadius: BorderRadius.circular(14),
+            children: [
+              // Pending Admission Requests Section
+              if (_pendingRequests.isNotEmpty)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 16),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppColors.amber50.withOpacity(0.6),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AppColors.amber200),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.hourglass_top_rounded, size: 16, color: AppColors.amber700),
+                              const SizedBox(width: 6),
+                              Text(
+                                'PENDING ADMISSIONS (${_pendingRequests.length})',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w900,
+                                  color: AppColors.amber800,
+                                  letterSpacing: 0.8,
+                                ),
+                              ),
+                            ],
                           ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            m.name.substring(0, 2).toUpperCase(),
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w900,
-                              color: AppColors.indigo950,
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: AppColors.amber100,
+                              borderRadius: BorderRadius.circular(10),
                             ),
+                            child: const Text(
+                              'Awaiting Student',
+                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.amber800),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      ..._pendingRequests.map((req) {
+                        final sName = req['studentName']?.toString() ?? 'Student';
+                        final sPhone = req['studentPhone']?.toString() ?? '';
+                        final seatLbl = req['seatLabel']?.toString() ?? 'Seat';
+                        final plan = req['planName']?.toString() ?? 'Monthly Plan';
+                        final timing = req['shiftTiming']?.toString() ?? 'Full Day';
+                        final fee = req['monthlyFee']?.toString() ?? '';
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: AppColors.amber100),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 38,
+                                height: 38,
+                                decoration: BoxDecoration(
+                                  color: AppColors.amber50,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                alignment: Alignment.center,
+                                child: Text(
+                                  sName.isNotEmpty ? sName.substring(0, 1).toUpperCase() : 'S',
+                                  style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.amber800),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(sName, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: AppColors.slate900)),
+                                    Text('$seatLbl · $plan', style: const TextStyle(fontSize: 10.5, color: AppColors.slate600)),
+                                    Text('Timing: $timing', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.primary)),
+                                    if (sPhone.isNotEmpty)
+                                      Text(sPhone, style: const TextStyle(fontSize: 10, color: AppColors.slate400)),
+                                  ],
+                                ),
+                              ),
+                              if (fee.isNotEmpty)
+                                Text('₹$fee/mo', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: AppColors.emerald600)),
+                            ],
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+
+              // Loading Spinner
+              if (_loadingMembers)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(32),
+                    child: CircularProgressIndicator(color: AppColors.orange500),
+                  ),
+                )
+              // Empty State
+              else if (filtered.isEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: AppColors.slate200),
+                  ),
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 72,
+                        height: 72,
+                        decoration: const BoxDecoration(
+                          color: AppColors.indigo50,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.people_outline_rounded, size: 36, color: AppColors.indigo950),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        _members.isEmpty ? 'No Members Enrolled Yet' : 'No matching members found',
+                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: AppColors.slate900),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        _members.isEmpty
+                            ? 'Your study hub currently has 0 members.\nAdd a student via mobile number to allot a seat & timing.'
+                            : 'Try searching by different name, desk number, or mobile number.',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 12, color: AppColors.slate500, height: 1.4),
+                      ),
+                      if (_members.isEmpty) ...[
+                        const SizedBox(height: 20),
+                        ElevatedButton.icon(
+                          onPressed: () => _openAddMemberModal(),
+                          icon: const Icon(Icons.person_add_rounded, size: 16, color: Colors.white),
+                          label: const Text('Add Member', style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.orange500,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                            elevation: 0,
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                      ],
+                    ],
+                  ),
+                )
+              // Members List
+              else
+                ...filtered.map((m) {
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppColors.slate200),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
                           children: [
-                            Text(
-                              m.name,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w900,
-                                color: AppColors.slate900,
+                            Container(
+                              width: 42,
+                              height: 42,
+                              decoration: BoxDecoration(
+                                color: AppColors.indigo50,
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              alignment: Alignment.center,
+                              child: Text(
+                                m.name.isNotEmpty
+                                    ? m.name.substring(0, m.name.length >= 2 ? 2 : 1).toUpperCase()
+                                    : 'M',
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w900,
+                                  color: AppColors.indigo950,
+                                ),
                               ),
                             ),
-                            Text(
-                              '${m.seat} · ${m.plan}',
-                              style: const TextStyle(fontSize: 10, color: AppColors.slate400),
+                            const SizedBox(width: 12),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  m.name,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w900,
+                                    color: AppColors.slate900,
+                                  ),
+                                ),
+                                Text(
+                                  '${m.seat} · ${m.plan}',
+                                  style: const TextStyle(fontSize: 10.5, color: AppColors.slate600),
+                                ),
+                                if (m.shiftTiming != null && m.shiftTiming!.isNotEmpty)
+                                  Text(
+                                    'Timing: ${m.shiftTiming}',
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.primary,
+                                    ),
+                                  ),
+                                Text(
+                                  m.phone,
+                                  style: const TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.slate400,
+                                  ),
+                                ),
+                              ],
                             ),
-                            Text(
-                              m.phone,
-                              style: const TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.slate500,
+                          ],
+                        ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Status & Attendance Column
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                // Enrollment Status Badge
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: (m.membershipStatus.toUpperCase() == 'ACTIVE') ? AppColors.emerald50 : AppColors.slate100,
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: (m.membershipStatus.toUpperCase() == 'ACTIVE') ? AppColors.emerald200 : AppColors.slate200),
+                                  ),
+                                  child: Text(
+                                    (m.membershipStatus.toUpperCase() == 'ACTIVE') ? 'Active' : 'Inactive',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w900,
+                                      color: (m.membershipStatus.toUpperCase() == 'ACTIVE') ? AppColors.emerald700 : AppColors.slate600,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                // Punch status
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      m.status.toLowerCase().contains('present') ? Icons.circle : Icons.circle_outlined,
+                                      size: 7,
+                                      color: m.status.toLowerCase().contains('present') ? AppColors.emerald600 : AppColors.slate400,
+                                    ),
+                                    const SizedBox(width: 3),
+                                    Text(
+                                      m.status.toLowerCase().contains('present')
+                                          ? (m.checkInTime != null ? 'In: ${m.checkInTime}' : 'Present')
+                                          : m.status,
+                                      style: TextStyle(
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: m.status.toLowerCase().contains('present') ? AppColors.emerald700 : AppColors.slate500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                            const SizedBox(width: 8),
+
+                            // Direct Profile Button
+                            InkWell(
+                              onTap: m.studentId != null ? () => _openMemberProfileModal(m) : null,
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: AppColors.indigo50,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.visibility_outlined, size: 12, color: AppColors.indigo950),
+                                    SizedBox(width: 3),
+                                    Text('Profile', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.indigo950)),
+                                  ],
+                                ),
                               ),
                             ),
+
+                            // 3-dots Menu
+                            if (m.studentId != null)
+                              PopupMenuButton<String>(
+                                icon: const Icon(Icons.more_vert_rounded, size: 20, color: AppColors.slate600),
+                                onSelected: (action) async {
+                                  if (action == 'VIEW_PROFILE') {
+                                    _openMemberProfileModal(m);
+                                  } else if (action == 'REALLOT_SEAT') {
+                                    _openReallotSeatModal(m);
+                                  } else if (action == 'TOGGLE_STATUS') {
+                                    _toggleMemberStatus(m);
+                                  } else if (action == 'RELEASE_SEAT' || action == 'REMOVE') {
+                                    final confirm = await showDialog<bool>(
+                                      context: context,
+                                      builder: (c) => AlertDialog(
+                                        title: Text(action == 'RELEASE_SEAT' ? 'Release Seat?' : 'Remove Member?'),
+                                        content: Text(action == 'RELEASE_SEAT'
+                                            ? 'Are you sure you want to release ${m.name}\'s seat? The student remains registered.'
+                                            : 'Are you sure you want to remove ${m.name} from the library?'),
+                                        actions: [
+                                          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
+                                          TextButton(
+                                            onPressed: () => Navigator.pop(c, true),
+                                            child: Text(action == 'RELEASE_SEAT' ? 'Release' : 'Remove', style: const TextStyle(color: Colors.red)),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                    if (confirm == true) {
+                                      final res = await ApiService.removeMember(m.studentId!, action: action);
+                                      if (res.success) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text(res.message ?? 'Action completed successfully'),
+                                            backgroundColor: AppColors.emerald500,
+                                          ),
+                                        );
+                                        _loadMembersData();
+                                        _loadFloorMapData();
+                                      } else {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text(res.message ?? 'Operation failed'),
+                                            backgroundColor: Colors.red,
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  }
+                                },
+                                itemBuilder: (ctx) => [
+                                  const PopupMenuItem(
+                                    value: 'VIEW_PROFILE',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.person_outline_rounded, size: 16, color: AppColors.indigo950),
+                                        SizedBox(width: 8),
+                                        Text('View Student Profile', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                                      ],
+                                    ),
+                                  ),
+                                  const PopupMenuItem(
+                                    value: 'REALLOT_SEAT',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.chair_alt_rounded, size: 16, color: AppColors.orange600),
+                                        SizedBox(width: 8),
+                                        Text('Re-allot / Edit Seat', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                                      ],
+                                    ),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'TOGGLE_STATUS',
+                                    child: Row(
+                                      children: [
+                                        Icon((m.membershipStatus.toUpperCase() == 'ACTIVE') ? Icons.pause_circle_outline_rounded : Icons.play_circle_outline_rounded,
+                                            size: 16, color: (m.membershipStatus.toUpperCase() == 'ACTIVE') ? AppColors.amber700 : AppColors.emerald600),
+                                        const SizedBox(width: 8),
+                                        Text((m.membershipStatus.toUpperCase() == 'ACTIVE') ? 'Make Student Inactive' : 'Make Student Active',
+                                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                                      ],
+                                    ),
+                                  ),
+                                  const PopupMenuDivider(),
+                                  const PopupMenuItem(
+                                    value: 'RELEASE_SEAT',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.event_seat_outlined, size: 16, color: AppColors.slate600),
+                                        SizedBox(width: 8),
+                                        Text('Release Seat Only', style: TextStyle(fontSize: 12.5)),
+                                      ],
+                                    ),
+                                  ),
+                                  const PopupMenuItem(
+                                    value: 'REMOVE',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.person_remove_rounded, size: 16, color: Colors.red),
+                                        SizedBox(width: 8),
+                                        Text('Remove from Library', style: TextStyle(fontSize: 12.5, color: Colors.red, fontWeight: FontWeight.w700)),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
                           ],
                         ),
                       ],
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: statusBg,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        m.status,
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w900,
-                          color: statusColor,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
+                  );
+                }),
+            ],
           ),
         ),
       ],
@@ -2779,48 +3160,48 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
     );
   }
 
-  void _openAddMemberModal() {
-    final nameCtrl = TextEditingController();
-    final phoneCtrl = TextEditingController();
-    String? selectedDesk = 'Seat #B-15';
-    String? selectedPlan = 'Full Day Dedicated (₹1,499/mo)';
-    DateTime? selectedDate = DateTime.now();
-
-    String? nameError;
-    String? phoneError;
-    String? deskError;
-    String? planError;
-    String? dateError;
-
-    final deskOptions = [
-      'Seat #A-01',
-      'Seat #A-02',
-      'Seat #A-05',
-      'Seat #B-15',
-      'Seat #B-16',
-      'Seat #C-01',
-      'Seat #C-05',
-      'Seat #D-08',
-      'Seat #D-12',
-    ];
-
-    final planOptions = [
-      'Full Day Dedicated (₹1,499/mo)',
-      'Morning Shift (₹899/mo)',
-      'Evening Shift (₹899/mo)',
-      'Night Owl Shift (₹999/mo)',
-      '24x7 Dedicated (₹1,999/mo)',
-    ];
-
+  void _openMemberProfileModal(MemberInfo m) {
+    if (m.studentId == null) return;
     showDialog(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setModalState) {
+      builder: (ctx) => FutureBuilder<ApiResponse<Map<String, dynamic>>>(
+        future: ApiService.getMemberProfile(m.studentId!),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Dialog(
+              child: Padding(
+                padding: EdgeInsets.all(28.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 14),
+                    Text('Loading Student Profile...', style: TextStyle(fontWeight: FontWeight.w700)),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          final data = snapshot.data?.data;
+          final studentName = data?['fullName']?.toString() ?? m.name;
+          final phone = data?['phone']?.toString() ?? m.phone;
+          final code = data?['studentCode']?.toString() ?? 'N/A';
+          final seat = data?['seat']?.toString() ?? m.seat;
+          final shift = data?['shiftTiming']?.toString() ?? m.shiftTiming ?? 'N/A';
+          final plan = data?['planName']?.toString() ?? m.plan;
+          final validTill = data?['validTill']?.toString() ?? 'N/A';
+          final gender = data?['gender']?.toString() ?? 'N/A';
+          final exam = data?['examCategory']?.toString() ?? 'N/A';
+          final emergency = data?['emergencyContact']?.toString() ?? 'None';
+          final attToday = data?['attendanceToday']?.toString() ?? m.status;
+          final memStatus = data?['membershipStatus']?.toString() ?? m.membershipStatus;
+          final isActive = memStatus.toUpperCase() == 'ACTIVE';
+
           return Dialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-            insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(22),
+              padding: const EdgeInsets.all(20),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -2828,21 +3209,389 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text(
-                            'ADMISSION',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w900,
-                              color: AppColors.orange500,
-                              letterSpacing: 1,
+                      Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: AppColors.indigo50,
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              studentName.isNotEmpty ? studentName[0].toUpperCase() : 'S',
+                              style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.indigo950, fontSize: 18),
                             ),
                           ),
+                          const SizedBox(width: 12),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(studentName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+                              Text('ID: $code · $phone', style: const TextStyle(fontSize: 11, color: AppColors.slate500)),
+                            ],
+                          ),
+                        ],
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isActive ? AppColors.emerald50 : AppColors.slate100,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: isActive ? AppColors.emerald200 : AppColors.slate200),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Membership: ${isActive ? "Active" : "Inactive"}',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: isActive ? AppColors.emerald800 : AppColors.slate700)),
+                        Text('Today: $attToday',
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.slate600)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  _buildProfileField('Assigned Desk', seat),
+                  _buildProfileField('Shift Timing', shift),
+                  _buildProfileField('Subscription Plan', plan),
+                  _buildProfileField('Valid Till', validTill),
+                  _buildProfileField('Target Exam', exam),
+                  _buildProfileField('Gender', gender),
+                  _buildProfileField('Emergency Contact', emergency),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            _openReallotSeatModal(m);
+                          },
+                          icon: const Icon(Icons.chair_alt_rounded, size: 14),
+                          label: const Text('Re-allot Seat', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.orange600,
+                            side: const BorderSide(color: AppColors.orange300),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildProfileField(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 11.5, color: AppColors.slate500)),
+          Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.slate900)),
+        ],
+      ),
+    );
+  }
+
+  void _openReallotSeatModal(MemberInfo m) {
+    if (m.studentId == null) return;
+    final total = _totalSeats > 0 ? _totalSeats : 10;
+    List<int> availableSeats = [];
+    if (_floorMapSeats.isNotEmpty) {
+      availableSeats = _floorMapSeats
+          .where((s) => s.status.toLowerCase() == 'available' && s.number <= total)
+          .map((s) => s.number)
+          .toList();
+    }
+    if (availableSeats.isEmpty) {
+      availableSeats = List.generate(total, (i) => i + 1);
+    }
+
+    int selectedNewSeat = availableSeats.first;
+    String selectedShift = m.shiftTiming ?? 'Full Day (08:00 AM - 08:00 PM)';
+    bool isSaving = false;
+    String? modalError;
+
+    final timingOptions = [
+      'Full Day (08:00 AM - 08:00 PM)',
+      'Morning Shift (06:00 AM - 02:00 PM)',
+      'Evening Shift (02:00 PM - 10:00 PM)',
+      'Night Owl Shift (10:00 PM - 06:00 AM)',
+      '24 Hours Dedicated (24x7)',
+    ];
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Re-allot Seat for ${m.name}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+                    IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close_rounded)),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text('Current Seat: ${m.seat} · Select from available seats (1 - $total):',
+                    style: const TextStyle(fontSize: 11.5, color: AppColors.slate500)),
+                const SizedBox(height: 14),
+                if (modalError != null) ...[
+                  Text(modalError!, style: const TextStyle(color: Colors.red, fontSize: 11.5, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 10),
+                ],
+                const Text('NEW SEAT NUMBER', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: AppColors.slate500)),
+                const SizedBox(height: 6),
+                DropdownButtonFormField<int>(
+                  value: selectedNewSeat,
+                  decoration: InputDecoration(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  items: availableSeats
+                      .map((n) => DropdownMenuItem(value: n, child: Text('Seat #$n (Available)')))
+                      .toList(),
+                  onChanged: (v) {
+                    if (v != null) setModalState(() => selectedNewSeat = v);
+                  },
+                ),
+                const SizedBox(height: 14),
+                const Text('SHIFT TIMING', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: AppColors.slate500)),
+                const SizedBox(height: 6),
+                DropdownButtonFormField<String>(
+                  value: timingOptions.contains(selectedShift) ? selectedShift : timingOptions.first,
+                  decoration: InputDecoration(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  items: timingOptions
+                      .map((t) => DropdownMenuItem(value: t, child: Text(t, style: const TextStyle(fontSize: 12))))
+                      .toList(),
+                  onChanged: (v) {
+                    if (v != null) setModalState(() => selectedShift = v);
+                  },
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: isSaving
+                        ? null
+                        : () async {
+                            setModalState(() => isSaving = true);
+                            final res = await ApiService.changeMemberSeat(
+                              studentId: m.studentId!,
+                              newSeatNumber: selectedNewSeat,
+                              shiftTiming: selectedShift,
+                            );
+                            setModalState(() => isSaving = false);
+                            if (res.success) {
+                              Navigator.pop(ctx);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(res.message ?? 'Seat changed successfully to Seat #$selectedNewSeat'),
+                                  backgroundColor: AppColors.emerald500,
+                                ),
+                              );
+                              _loadMembersData();
+                              _loadFloorMapData();
+                            } else {
+                              setModalState(() => modalError = res.message ?? 'Failed to change seat');
+                            }
+                          },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.orange500,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    child: Text(isSaving ? 'Updating...' : 'Confirm Re-allotment',
+                        style: const TextStyle(fontWeight: FontWeight.w900, color: Colors.white)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _toggleMemberStatus(MemberInfo m) async {
+    if (m.studentId == null) return;
+    final isActive = m.membershipStatus.toUpperCase() == 'ACTIVE';
+    final actionText = isActive ? 'Make Inactive' : 'Make Active';
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text('$actionText?'),
+        content: Text(isActive
+            ? 'Making ${m.name} inactive will release their seat #${m.seat} for new admissions. The student remains registered.'
+            : 'Reactivate ${m.name}\'s membership?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: Text(actionText, style: TextStyle(color: isActive ? Colors.orange : AppColors.emerald600)),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      final res = await ApiService.toggleMemberStatus(m.studentId!);
+      if (res.success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(res.message ?? 'Status updated successfully'),
+            backgroundColor: AppColors.emerald500,
+          ),
+        );
+        _loadMembersData();
+        _loadFloorMapData();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(res.message ?? 'Operation failed'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _openAddMemberModal() {
+    int step = 1; // 1: Search & verify student, 2: Seat, shift & plan allocation
+    final phoneCtrl = TextEditingController();
+    final nameCtrl = TextEditingController();
+    final feeCtrl = TextEditingController(
+      text: _businessProfile != null && _businessProfile!.monthlyPrice > 0
+          ? '${_businessProfile!.monthlyPrice.toInt()}'
+          : '1499',
+    );
+
+    bool isSearching = false;
+    bool isRegistering = false;
+    bool isSendingRequest = false;
+    String? phoneError;
+    String? nameError;
+    String? globalError;
+
+    Map<String, dynamic>? studentData;
+    bool showQuickSignup = false;
+
+    String? selectedDesk;
+    String selectedTiming = 'Full Day (08:00 AM - 08:00 PM)';
+    String selectedPlan = 'Full Day Dedicated Desk';
+    String selectedDuration = '1m';
+    String selectedExamCategory = 'UPSC / Civil Services';
+    String selectedGender = 'Male';
+
+    // Generate desk options from available seats
+    final total = _totalSeats > 0 ? _totalSeats : 10;
+    List<String> deskOptions = [];
+    if (_floorMapSeats.isNotEmpty) {
+      deskOptions = _floorMapSeats
+          .where((s) => s.status.toLowerCase() == 'available' && s.number <= total)
+          .map((s) => 'Seat #${s.number}')
+          .toList();
+    }
+    if (deskOptions.isEmpty) {
+      deskOptions = List.generate(total, (i) => 'Seat #${i + 1}');
+    }
+    selectedDesk = deskOptions.first;
+
+    final timingOptions = [
+      'Full Day (08:00 AM - 08:00 PM)',
+      'Morning Shift (06:00 AM - 02:00 PM)',
+      'Evening Shift (02:00 PM - 10:00 PM)',
+      'Night Owl Shift (10:00 PM - 06:00 AM)',
+      '24 Hours Dedicated (24x7)',
+    ];
+
+    final planOptions = [
+      'Full Day Dedicated Desk',
+      'Morning Shift Desk',
+      'Evening Shift Desk',
+      'Night Owl Dedicated Desk',
+      '24x7 Flexi Desk',
+    ];
+
+    final examOptions = [
+      'UPSC / Civil Services',
+      'SSC / Railway / Banking',
+      'NEET / Medical Entrance',
+      'JEE / Engineering Entrance',
+      'State PCS / State Exams',
+      'CA / CS / Commerce',
+      'School / College Exams',
+      'Other Competitive Exams',
+    ];
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) {
+          return Dialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+            insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(22),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Dialog Header
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: AppColors.orange50,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Text(
+                                  step == 1 ? 'STEP 1 OF 2 · STUDENT SEARCH' : 'STEP 2 OF 2 · ALLOT SEAT & PLAN',
+                                  style: const TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w900,
+                                    color: AppColors.orange600,
+                                    letterSpacing: 0.8,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
                           Text(
-                            'Add New Member',
-                            style: TextStyle(
+                            step == 1 ? 'Add Student Member' : 'Allot Seat & Shift Timing',
+                            style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w900,
                               color: AppColors.slate900,
@@ -2852,166 +3601,538 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                       ),
                       IconButton(
                         onPressed: () => Navigator.of(ctx).pop(),
-                        icon: const Icon(Icons.close),
+                        icon: const Icon(Icons.close_rounded, color: AppColors.slate500),
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
-                  FormFieldWidget(
-                    label: 'STUDENT FULL NAME',
-                    placeholder: 'e.g. Manisha Kumari',
-                    controller: nameCtrl,
-                    errorText: nameError,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z\s]')),
+
+                  if (globalError != null) ...[
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 14),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.rose50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.rose100),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.error_outline_rounded, color: AppColors.rose600, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              globalError!,
+                              style: const TextStyle(color: AppColors.rose600, fontSize: 11.5, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+
+                  // ----------------------------------------------------
+                  // STEP 1: Search student or Quick Signup
+                  // ----------------------------------------------------
+                  if (step == 1) ...[
+                    const Text(
+                      'Search a registered student by mobile number. If the student does not exist, you can quickly create an account for them.',
+                      style: TextStyle(fontSize: 11.5, color: AppColors.slate500, height: 1.35),
+                    ),
+                    const SizedBox(height: 16),
+
+                    FormFieldWidget(
+                      label: 'STUDENT MOBILE NUMBER',
+                      placeholder: '10-digit mobile number',
+                      prefix: '+91',
+                      keyboardType: TextInputType.phone,
+                      controller: phoneCtrl,
+                      maxLength: 10,
+                      errorText: phoneError,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(10),
+                      ],
+                      onChanged: (val) {
+                        if (phoneError != null) {
+                          setModalState(() => phoneError = null);
+                        }
+                        if (studentData != null || showQuickSignup) {
+                          setModalState(() {
+                            studentData = null;
+                            showQuickSignup = false;
+                            globalError = null;
+                          });
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 12),
+
+                    if (!showQuickSignup && studentData == null)
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: isSearching
+                              ? null
+                              : () async {
+                                  final phone = phoneCtrl.text.trim();
+                                  if (phone.length != 10 || !RegExp(r'^[6-9]\d{9}$').hasMatch(phone)) {
+                                    setModalState(() => phoneError = 'Enter a valid 10-digit mobile number');
+                                    return;
+                                  }
+                                  setModalState(() {
+                                    isSearching = true;
+                                    phoneError = null;
+                                    globalError = null;
+                                  });
+                                  final res = await ApiService.searchStudentByPhone(phone);
+                                  setModalState(() => isSearching = false);
+
+                                  if (res.success && res.data != null) {
+                                    final isOwnerOrAdmin = res.data!['isOwnerOrAdmin'] == true;
+                                    if (isOwnerOrAdmin) {
+                                      setModalState(() {
+                                        studentData = null;
+                                        showQuickSignup = false;
+                                        globalError = '⚠️ ' + (res.data!['message']?.toString() ??
+                                            'This mobile number is registered as a Library Owner / Admin and cannot be registered as a student member.');
+                                      });
+                                      return;
+                                    }
+                                    final found = res.data!['found'] == true;
+                                    if (found) {
+                                      setModalState(() {
+                                        studentData = res.data;
+                                        showQuickSignup = false;
+                                      });
+                                    } else {
+                                      setModalState(() {
+                                        studentData = null;
+                                        showQuickSignup = true;
+                                      });
+                                    }
+                                  } else {
+                                    setModalState(() => globalError = res.message ?? 'Search failed');
+                                  }
+                                },
+                          icon: isSearching
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                )
+                              : const Icon(Icons.search_rounded, size: 16, color: Colors.white),
+                          label: Text(
+                            isSearching ? 'Searching...' : 'Search Student',
+                            style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.white),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            padding: const EdgeInsets.symmetric(vertical: 13),
+                            elevation: 0,
+                          ),
+                        ),
+                      ),
+
+                    // Found Student Profile Card
+                    if (studentData != null) ...[
+                      const SizedBox(height: 14),
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: AppColors.emerald50.withOpacity(0.5),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: AppColors.emerald200),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  width: 44,
+                                  height: 44,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.emerald100,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: Text(
+                                    (studentData!['fullName']?.toString().isNotEmpty ?? false)
+                                        ? studentData!['fullName'].toString().substring(0, 1).toUpperCase()
+                                        : 'S',
+                                    style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.emerald800, fontSize: 16),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        studentData!['fullName']?.toString() ?? 'Student',
+                                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: AppColors.slate900),
+                                      ),
+                                      Text(
+                                        'Code: ${studentData!['studentCode'] ?? "STU"} · +91 ${phoneCtrl.text.trim()}',
+                                        style: const TextStyle(fontSize: 11, color: AppColors.slate500),
+                                      ),
+                                      if (studentData!['examCategory'] != null)
+                                        Text(
+                                          'Exam: ${studentData!['examCategory']}',
+                                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.emerald700),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (studentData!['hasActiveMembership'] == true) ...[
+                              const SizedBox(height: 10),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: AppColors.rose50,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: AppColors.rose200),
+                                ),
+                                child: Text(
+                                  '⚠️ Active member in ${studentData!['activeLibraryName'] ?? "another library"}. Please resolve previous membership first.',
+                                  style: const TextStyle(color: AppColors.rose600, fontSize: 10.5, fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                            ] else if (studentData!['hasPendingRequest'] == true) ...[
+                              const SizedBox(height: 10),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: AppColors.amber50,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: AppColors.amber200),
+                                ),
+                                child: const Text(
+                                  '⏳ An admission request is already pending for this student in this library.',
+                                  style: TextStyle(color: AppColors.amber800, fontSize: 10.5, fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      if (studentData!['hasActiveMembership'] != true && studentData!['hasPendingRequest'] != true)
+                        CustomButton(
+                          label: 'Continue to Allot Seat & Shift →',
+                          onPressed: () => setModalState(() => step = 2),
+                        ),
                     ],
-                    onChanged: (val) {
-                      if (nameError != null) {
-                        setModalState(() => nameError = null);
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 14),
-                  FormFieldWidget(
-                    label: 'MOBILE NUMBER',
-                    placeholder: '10-digit mobile number',
-                    prefix: '+91',
-                    keyboardType: TextInputType.phone,
-                    controller: phoneCtrl,
-                    maxLength: 10,
-                    errorText: phoneError,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(10),
+
+                    // Quick Signup Form for New Student
+                    if (showQuickSignup) ...[
+                      const SizedBox(height: 14),
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: AppColors.indigo50.withOpacity(0.5),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: AppColors.indigo200),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: const [
+                                Icon(Icons.person_add_rounded, size: 16, color: AppColors.primary),
+                                SizedBox(width: 6),
+                                Text(
+                                  'NEW STUDENT REGISTRATION',
+                                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: AppColors.primary, letterSpacing: 0.8),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'No student account found for +91 ${phoneCtrl.text.trim()}. Fill details below to register:',
+                              style: const TextStyle(fontSize: 11, color: AppColors.slate600),
+                            ),
+                            const SizedBox(height: 12),
+                            FormFieldWidget(
+                              label: 'STUDENT FULL NAME',
+                              placeholder: 'e.g. Rahul Sharma',
+                              controller: nameCtrl,
+                              errorText: nameError,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z\s]')),
+                              ],
+                              onChanged: (val) {
+                                if (nameError != null) setModalState(() => nameError = null);
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                            DropdownFieldWidget(
+                              label: 'EXAM PREPARATION CATEGORY',
+                              value: selectedExamCategory,
+                              items: examOptions,
+                              hint: 'Select exam category',
+                              onChanged: (val) {
+                                if (val != null) setModalState(() => selectedExamCategory = val);
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                            const Text(
+                              'GENDER',
+                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: AppColors.slate500, letterSpacing: 0.8),
+                            ),
+                            const SizedBox(height: 6),
+                            Row(
+                              children: ['Male', 'Female', 'Other'].map((g) {
+                                final isSel = selectedGender == g;
+                                return InkWell(
+                                  onTap: () => setModalState(() => selectedGender = g),
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: Container(
+                                    margin: const EdgeInsets.only(right: 8),
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: isSel ? AppColors.primary : Colors.white,
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(color: isSel ? AppColors.primary : AppColors.slate200),
+                                    ),
+                                    child: Text(
+                                      g,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        color: isSel ? Colors.white : AppColors.slate700,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                            const SizedBox(height: 16),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton(
+                                onPressed: isRegistering
+                                    ? null
+                                    : () async {
+                                        final name = nameCtrl.text.trim();
+                                        if (name.isEmpty || name.length < 3) {
+                                          setModalState(() => nameError = 'Enter student name (at least 3 characters)');
+                                          return;
+                                        }
+                                        setModalState(() {
+                                          isRegistering = true;
+                                          globalError = null;
+                                        });
+                                        final regRes = await ApiService.quickRegisterStudent(
+                                          fullName: name,
+                                          mobile: phoneCtrl.text.trim(),
+                                          examCategory: selectedExamCategory,
+                                          gender: selectedGender,
+                                        );
+                                        setModalState(() => isRegistering = false);
+
+                                        if (regRes.success && regRes.data != null) {
+                                          setModalState(() {
+                                            studentData = regRes.data;
+                                            step = 2;
+                                          });
+                                        } else {
+                                          setModalState(() => globalError = regRes.message ?? 'Registration failed');
+                                        }
+                                      },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.emerald600,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  elevation: 0,
+                                ),
+                                child: Text(
+                                  isRegistering ? 'Registering...' : 'Register Student & Proceed →',
+                                  style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.white, fontSize: 12),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
-                    onChanged: (val) {
-                      if (phoneError != null) {
-                        setModalState(() => phoneError = null);
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 14),
-                  DropdownFieldWidget(
-                    label: 'ASSIGN DESK',
-                    value: selectedDesk,
-                    items: deskOptions,
-                    errorText: deskError,
-                    hint: 'Select Desk',
-                    onChanged: (val) {
-                      setModalState(() {
-                        selectedDesk = val;
-                        deskError = null;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 14),
-                  DropdownFieldWidget(
-                    label: 'MEMBERSHIP PLAN',
-                    value: selectedPlan,
-                    items: planOptions,
-                    errorText: planError,
-                    hint: 'Select Plan',
-                    onChanged: (val) {
-                      setModalState(() {
-                        selectedPlan = val;
-                        planError = null;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 14),
-                  DateFieldWidget(
-                    label: 'JOINING DATE',
-                    selectedDate: selectedDate,
-                    errorText: dateError,
-                    placeholder: 'Select Joining Date',
-                    firstDate: DateTime.now().subtract(const Duration(days: 30)),
-                    lastDate: DateTime.now().add(const Duration(days: 90)),
-                    onDateSelected: (date) {
-                      setModalState(() {
-                        selectedDate = date;
-                        dateError = null;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 22),
-                  CustomButton(
-                    label: 'Register & Allocate Seat',
-                    onPressed: () {
-                      final name = nameCtrl.text.trim();
-                      final phone = phoneCtrl.text.trim();
+                  ],
 
-                      bool hasError = false;
-                      String? newNameError;
-                      String? newPhoneError;
-                      String? newDeskError;
-                      String? newPlanError;
-                      String? newDateError;
+                  // ----------------------------------------------------
+                  // STEP 2: Allot Seat, Shift Timing & Plan
+                  // ----------------------------------------------------
+                  if (step == 2) ...[
+                    // Student Header Pill
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppColors.indigo50,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.person_rounded, size: 16, color: AppColors.indigo950),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '${studentData?['fullName'] ?? "Student"} · +91 ${phoneCtrl.text.trim()}',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.indigo950),
+                            ),
+                          ),
+                          InkWell(
+                            onTap: () => setModalState(() => step = 1),
+                            child: const Text('Change', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.primary)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
 
-                      if (name.isEmpty) {
-                        newNameError = 'Student name is required';
-                        hasError = true;
-                      } else if (name.length < 3) {
-                        newNameError = 'Name must be at least 3 characters';
-                        hasError = true;
-                      }
+                    // Desk Selector
+                    DropdownFieldWidget(
+                      label: 'ASSIGN AVAILABLE DESK',
+                      value: selectedDesk,
+                      items: deskOptions,
+                      hint: 'Select Available Desk',
+                      onChanged: (val) {
+                        if (val != null) setModalState(() => selectedDesk = val);
+                      },
+                    ),
+                    const SizedBox(height: 14),
 
-                      if (phone.isEmpty) {
-                        newPhoneError = 'Mobile number is required';
-                        hasError = true;
-                      } else if (!RegExp(r'^[6-9]\d{9}$').hasMatch(phone)) {
-                        newPhoneError = 'Enter a valid 10-digit mobile number';
-                        hasError = true;
-                      }
+                    // Shift Timing Selector
+                    DropdownFieldWidget(
+                      label: 'SHIFT TIMING',
+                      value: selectedTiming,
+                      items: timingOptions,
+                      hint: 'Select Shift Timing',
+                      onChanged: (val) {
+                        if (val != null) setModalState(() => selectedTiming = val);
+                      },
+                    ),
+                    const SizedBox(height: 14),
 
-                      if (selectedDesk == null || selectedDesk!.isEmpty) {
-                        newDeskError = 'Please assign a desk';
-                        hasError = true;
-                      }
+                    // Membership Plan Selector
+                    DropdownFieldWidget(
+                      label: 'MEMBERSHIP PLAN',
+                      value: selectedPlan,
+                      items: planOptions,
+                      hint: 'Select Membership Plan',
+                      onChanged: (val) {
+                        if (val != null) setModalState(() => selectedPlan = val);
+                      },
+                    ),
+                    const SizedBox(height: 14),
 
-                      if (selectedPlan == null || selectedPlan!.isEmpty) {
-                        newPlanError = 'Please select a plan';
-                        hasError = true;
-                      }
-
-                      if (selectedDate == null) {
-                        newDateError = 'Please choose a joining date';
-                        hasError = true;
-                      }
-
-                      if (hasError) {
-                        setModalState(() {
-                          nameError = newNameError;
-                          phoneError = newPhoneError;
-                          deskError = newDeskError;
-                          planError = newPlanError;
-                          dateError = newDateError;
-                        });
-                        return; // DO NOT PROCEED
-                      }
-
-                      setState(() {
-                        _members.insert(
-                          0,
-                          MemberInfo(
-                            name: name,
-                            seat: selectedDesk!,
-                            status: 'Present',
-                            plan: selectedPlan!.split(' (')[0],
-                            phone: '+91 $phone',
+                    // Plan Duration
+                    const Text(
+                      'PLAN DURATION',
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: AppColors.slate500, letterSpacing: 0.8),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        {'label': '1 Month', 'val': '1m'},
+                        {'label': '3 Months', 'val': '3m'},
+                        {'label': '6 Months', 'val': '6m'},
+                      ].map((d) {
+                        final isSel = selectedDuration == d['val'];
+                        return Expanded(
+                          child: InkWell(
+                            onTap: () => setModalState(() => selectedDuration = d['val']!),
+                            borderRadius: BorderRadius.circular(10),
+                            child: Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 3),
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              decoration: BoxDecoration(
+                                color: isSel ? AppColors.primary : Colors.white,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: isSel ? AppColors.primary : AppColors.slate200),
+                              ),
+                              alignment: Alignment.center,
+                              child: Text(
+                                d['label']!,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: isSel ? Colors.white : AppColors.slate700,
+                                ),
+                              ),
+                            ),
                           ),
                         );
-                      });
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 14),
 
-                      Navigator.of(ctx).pop();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Member $name registered successfully!'),
-                          backgroundColor: AppColors.emerald500,
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
-                    },
-                  ),
+                    // Monthly Fee
+                    FormFieldWidget(
+                      label: 'MONTHLY FEE (₹)',
+                      placeholder: 'e.g. 1499',
+                      controller: feeCtrl,
+                      prefix: '₹',
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    ),
+                    const SizedBox(height: 22),
+
+                    // Send Request Button
+                    CustomButton(
+                      label: isSendingRequest ? 'Sending Admission Request...' : 'Send Admission Request to Student',
+                      onPressed: isSendingRequest
+                          ? () {}
+                          : () async {
+                              final feeText = feeCtrl.text.trim();
+                              final fee = double.tryParse(feeText) ?? 1499;
+
+                              if (selectedDesk == null || selectedDesk!.isEmpty) {
+                                setModalState(() => globalError = 'Please select a desk');
+                                return;
+                              }
+
+                              setModalState(() {
+                                isSendingRequest = true;
+                                globalError = null;
+                              });
+
+                              final sId = studentData?['studentId']?.toString();
+                              final res = await ApiService.sendAdmissionRequest(
+                                studentId: sId,
+                                mobile: phoneCtrl.text.trim(),
+                                fullName: studentData?['fullName']?.toString(),
+                                assignedSeat: selectedDesk!,
+                                planName: selectedPlan,
+                                shiftTiming: selectedTiming,
+                                monthlyFee: fee,
+                                duration: selectedDuration,
+                              );
+
+                              setModalState(() => isSendingRequest = false);
+
+                              if (res.success) {
+                                Navigator.of(ctx).pop();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'Admission request sent to ${studentData?['fullName'] ?? "student"}! Seat ${selectedDesk!} is reserved pending student acceptance.',
+                                      style: const TextStyle(fontWeight: FontWeight.w700),
+                                    ),
+                                    backgroundColor: AppColors.emerald500,
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                                _loadMembersData();
+                                _loadFloorMapData();
+                              } else {
+                                setModalState(() => globalError = res.message ?? 'Failed to send request');
+                              }
+                            },
+                    ),
+                  ],
                 ],
               ),
             ),

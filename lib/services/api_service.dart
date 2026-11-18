@@ -635,7 +635,7 @@ class ApiService {
     }
   }
 
-  /// Onboard / admit new member
+  /// Onboard / admit new member (legacy / direct walk-in)
   static Future<ApiResponse<Map<String, dynamic>>> addMember({
     required String fullName,
     required String mobile,
@@ -673,6 +673,328 @@ class ApiService {
           code: json['code'] as String?,
           message: json['message'] as String? ?? 'Failed to admit member',
         );
+      }
+    } catch (e) {
+      return ApiResponse(success: false, message: _formatNetworkError(e));
+    }
+  }
+
+  /// Search student by mobile number for library admission
+  static Future<ApiResponse<Map<String, dynamic>>> searchStudentByPhone(String phone) async {
+    try {
+      final token = await AuthStorage.getToken();
+      final clean = phone.replaceAll(RegExp(r'\D'), '');
+      final uri = Uri.parse('${ApiConfig.baseUrl}/owner/members/search-student?phone=$clean');
+      final response = await http
+          .get(uri, headers: _buildHeaders(token: token))
+          .timeout(_timeout);
+
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 200) {
+        return ApiResponse(success: true, data: json);
+      } else {
+        return ApiResponse(success: false, message: json['message']?.toString() ?? 'Student lookup failed');
+      }
+    } catch (e) {
+      return ApiResponse(success: false, message: _formatNetworkError(e));
+    }
+  }
+
+  /// Quick register a student by owner during walk-in admission
+  static Future<ApiResponse<Map<String, dynamic>>> quickRegisterStudent({
+    required String fullName,
+    required String mobile,
+    String? examCategory,
+    String? gender,
+  }) async {
+    try {
+      final token = await AuthStorage.getToken();
+      final uri = Uri.parse('${ApiConfig.baseUrl}/owner/members/quick-register');
+      final body = jsonEncode({
+        'fullName': fullName.trim(),
+        'mobile': mobile.replaceAll(RegExp(r'\D'), ''),
+        if (examCategory != null && examCategory.isNotEmpty) 'examCategory': examCategory.trim(),
+        if (gender != null && gender.isNotEmpty) 'gender': gender,
+      });
+
+      final response = await http
+          .post(uri, headers: _buildHeaders(token: token), body: body)
+          .timeout(_timeout);
+
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return ApiResponse(success: true, data: json);
+      } else {
+        return ApiResponse(
+          success: false,
+          code: json['code'] as String?,
+          message: json['message'] as String? ?? 'Failed to register student',
+        );
+      }
+    } catch (e) {
+      return ApiResponse(success: false, message: _formatNetworkError(e));
+    }
+  }
+
+  /// Send admission request to student profile
+  static Future<ApiResponse<Map<String, dynamic>>> sendAdmissionRequest({
+    String? studentId,
+    String? mobile,
+    String? fullName,
+    required String assignedSeat,
+    String? planName,
+    String? shiftTiming,
+    required double monthlyFee,
+    String duration = '1m',
+  }) async {
+    try {
+      final token = await AuthStorage.getToken();
+      final uri = Uri.parse('${ApiConfig.baseUrl}/owner/members/send-request');
+      final body = jsonEncode({
+        if (studentId != null && studentId.isNotEmpty) 'studentId': studentId,
+        if (mobile != null && mobile.isNotEmpty) 'mobile': mobile.replaceAll(RegExp(r'\D'), ''),
+        if (fullName != null && fullName.isNotEmpty) 'fullName': fullName.trim(),
+        'assignedSeat': assignedSeat,
+        'planName': planName ?? 'Monthly Seat',
+        'shiftTiming': shiftTiming ?? 'Full Day (8:00 AM - 8:00 PM)',
+        'monthlyFee': monthlyFee,
+        'duration': duration,
+      });
+
+      final response = await http
+          .post(uri, headers: _buildHeaders(token: token), body: body)
+          .timeout(_timeout);
+
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return ApiResponse(success: true, data: json);
+      } else {
+        return ApiResponse(
+          success: false,
+          code: json['code'] as String?,
+          message: json['message'] as String? ?? 'Failed to send admission request',
+        );
+      }
+    } catch (e) {
+      return ApiResponse(success: false, message: _formatNetworkError(e));
+    }
+  }
+
+  /// List admission requests for owner's library
+  static Future<ApiResponse<List<dynamic>>> getOwnerAdmissionRequests() async {
+    try {
+      final token = await AuthStorage.getToken();
+      final uri = Uri.parse('${ApiConfig.baseUrl}/owner/members/requests');
+      final response = await http
+          .get(uri, headers: _buildHeaders(token: token))
+          .timeout(_timeout);
+
+      if (response.statusCode == 200) {
+        final list = jsonDecode(response.body) as List<dynamic>;
+        return ApiResponse(success: true, data: list);
+      } else {
+        final json = jsonDecode(response.body) as Map<String, dynamic>;
+        return ApiResponse(success: false, message: json['message']?.toString());
+      }
+    } catch (e) {
+      return ApiResponse(success: false, message: _formatNetworkError(e));
+    }
+  }
+
+  /// Remove or release member from owner library
+  static Future<ApiResponse<Map<String, dynamic>>> removeMember(
+    String studentId, {
+    String action = 'REMOVE',
+    String? reason,
+  }) async {
+    try {
+      final token = await AuthStorage.getToken();
+      final uri = Uri.parse('${ApiConfig.baseUrl}/owner/members/$studentId/remove');
+      final body = jsonEncode({
+        'action': action,
+        if (reason != null && reason.isNotEmpty) 'reason': reason,
+      });
+
+      final response = await http
+          .post(uri, headers: _buildHeaders(token: token), body: body)
+          .timeout(_timeout);
+
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 200) {
+        return ApiResponse(success: true, data: json);
+      } else {
+        return ApiResponse(success: false, message: json['message']?.toString() ?? 'Failed to remove member');
+      }
+    } catch (e) {
+      return ApiResponse(success: false, message: _formatNetworkError(e));
+    }
+  }
+
+  /// Change/reallot seat for a member
+  static Future<ApiResponse<Map<String, dynamic>>> changeMemberSeat({
+    required String studentId,
+    required int newSeatNumber,
+    String? shiftTiming,
+  }) async {
+    try {
+      final token = await AuthStorage.getToken();
+      final uri = Uri.parse('${ApiConfig.baseUrl}/owner/members/$studentId/change-seat');
+      final body = jsonEncode({
+        'newSeatNumber': newSeatNumber,
+        if (shiftTiming != null && shiftTiming.isNotEmpty) 'shiftTiming': shiftTiming,
+      });
+      final response = await http
+          .post(uri, headers: _buildHeaders(token: token), body: body)
+          .timeout(_timeout);
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return ApiResponse(success: true, data: json);
+      } else {
+        return ApiResponse(
+          success: false,
+          message: json['message']?.toString() ?? 'Failed to reallot seat',
+        );
+      }
+    } catch (e) {
+      return ApiResponse(success: false, message: _formatNetworkError(e));
+    }
+  }
+
+  /// Toggle member status between ACTIVE and INACTIVE
+  static Future<ApiResponse<Map<String, dynamic>>> toggleMemberStatus(String studentId) async {
+    try {
+      final token = await AuthStorage.getToken();
+      final uri = Uri.parse('${ApiConfig.baseUrl}/owner/members/$studentId/toggle-status');
+      final response = await http
+          .post(uri, headers: _buildHeaders(token: token))
+          .timeout(_timeout);
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return ApiResponse(success: true, data: json);
+      } else {
+        return ApiResponse(
+          success: false,
+          message: json['message']?.toString() ?? 'Failed to toggle status',
+        );
+      }
+    } catch (e) {
+      return ApiResponse(success: false, message: _formatNetworkError(e));
+    }
+  }
+
+  /// Get member's detailed profile
+  static Future<ApiResponse<Map<String, dynamic>>> getMemberProfile(String studentId) async {
+    try {
+      final token = await AuthStorage.getToken();
+      final uri = Uri.parse('${ApiConfig.baseUrl}/owner/members/$studentId/profile');
+      final response = await http
+          .get(uri, headers: _buildHeaders(token: token))
+          .timeout(_timeout);
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return ApiResponse(success: true, data: json);
+      } else {
+        return ApiResponse(
+          success: false,
+          message: json['message']?.toString() ?? 'Failed to get member profile',
+        );
+      }
+    } catch (e) {
+      return ApiResponse(success: false, message: _formatNetworkError(e));
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // STUDENT ADMISSION REQUESTS & SEATS APIS
+  // --------------------------------------------------------------------------
+
+  /// Get pending admission requests sent to student
+  static Future<ApiResponse<List<dynamic>>> getStudentAdmissionRequests() async {
+    try {
+      final token = await AuthStorage.getToken();
+      final uri = Uri.parse('${ApiConfig.baseUrl}/student/memberships/requests');
+      final response = await http
+          .get(uri, headers: _buildHeaders(token: token))
+          .timeout(_timeout);
+
+      if (response.statusCode == 200) {
+        final list = jsonDecode(response.body) as List<dynamic>;
+        return ApiResponse(success: true, data: list);
+      } else {
+        final json = jsonDecode(response.body) as Map<String, dynamic>;
+        return ApiResponse(success: false, message: json['message']?.toString());
+      }
+    } catch (e) {
+      return ApiResponse(success: false, message: _formatNetworkError(e));
+    }
+  }
+
+  /// Accept an admission request
+  static Future<ApiResponse<Map<String, dynamic>>> acceptAdmissionRequest(String requestId) async {
+    try {
+      final token = await AuthStorage.getToken();
+      final uri = Uri.parse('${ApiConfig.baseUrl}/student/memberships/requests/$requestId/accept');
+      final response = await http
+          .post(uri, headers: _buildHeaders(token: token))
+          .timeout(_timeout);
+
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return ApiResponse(success: true, data: json);
+      } else {
+        return ApiResponse(
+          success: false,
+          code: json['code'] as String?,
+          message: json['message'] as String? ?? 'Failed to accept admission offer',
+        );
+      }
+    } catch (e) {
+      return ApiResponse(success: false, message: _formatNetworkError(e));
+    }
+  }
+
+  /// Reject an admission request
+  static Future<ApiResponse<Map<String, dynamic>>> rejectAdmissionRequest(String requestId, {String? reason}) async {
+    try {
+      final token = await AuthStorage.getToken();
+      final uri = Uri.parse('${ApiConfig.baseUrl}/student/memberships/requests/$requestId/reject');
+      final body = jsonEncode({
+        if (reason != null && reason.isNotEmpty) 'reason': reason,
+      });
+
+      final response = await http
+          .post(uri, headers: _buildHeaders(token: token), body: body)
+          .timeout(_timeout);
+
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return ApiResponse(success: true, data: json);
+      } else {
+        return ApiResponse(
+          success: false,
+          code: json['code'] as String?,
+          message: json['message'] as String? ?? 'Failed to reject admission offer',
+        );
+      }
+    } catch (e) {
+      return ApiResponse(success: false, message: _formatNetworkError(e));
+    }
+  }
+
+  /// Get seats of a library (vacant / full + shift timing)
+  static Future<ApiResponse<Map<String, dynamic>>> getLibrarySeats(String libraryId) async {
+    try {
+      final token = await AuthStorage.getToken();
+      final uri = Uri.parse('${ApiConfig.baseUrl}/libraries/$libraryId/seats');
+      final response = await http
+          .get(uri, headers: _buildHeaders(token: token))
+          .timeout(_timeout);
+
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 200) {
+        return ApiResponse(success: true, data: json);
+      } else {
+        return ApiResponse(success: false, message: json['message']?.toString());
       }
     } catch (e) {
       return ApiResponse(success: false, message: _formatNetworkError(e));
