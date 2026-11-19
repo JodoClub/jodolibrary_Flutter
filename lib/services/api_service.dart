@@ -1304,6 +1304,8 @@ class ApiService {
     }
   }
 
+  static Future<ApiResponse<Map<String, dynamic>>> getStudentActiveLibrary() => getActiveLibraryDetails();
+
   /// Logout from backend session
   static Future<void> logout() async {
     try {

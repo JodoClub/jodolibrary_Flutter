@@ -349,7 +349,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
   Future<void> _performPunchIn() async {
     String? payload = _activeLibraryModel?.qrPayload ?? _activeLibraryData?['qrPayload']?.toString();
     if (payload == null || payload.isEmpty) {
-      final actRes = await ApiService.getStudentActiveLibrary();
+      final actRes = await ApiService.getActiveLibraryDetails();
       if (actRes.success && actRes.data != null) {
         payload = actRes.data!['qrPayload']?.toString();
       }
