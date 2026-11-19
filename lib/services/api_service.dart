@@ -830,6 +830,80 @@ class ApiService {
     }
   }
 
+  /// Get list of removed / ex-members with enroll-in and enroll-out dates
+  static Future<ApiResponse<List<Map<String, dynamic>>>> getRemovedMembers() async {
+    try {
+      final token = await AuthStorage.getToken();
+      final uri = Uri.parse('${ApiConfig.baseUrl}/owner/members/removed');
+      final response = await http
+          .get(uri, headers: _buildHeaders(token: token))
+          .timeout(_timeout);
+
+      final decoded = jsonDecode(response.body);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        if (decoded is List) {
+          final list = decoded.map((e) => e as Map<String, dynamic>).toList();
+          return ApiResponse(success: true, data: list);
+        }
+        return ApiResponse(success: true, data: []);
+      } else {
+        return ApiResponse(
+          success: false,
+          message: decoded is Map ? decoded['message']?.toString() : 'Failed to fetch removed members',
+        );
+      }
+    } catch (e) {
+      return ApiResponse(success: false, message: _formatNetworkError(e));
+    }
+  }
+
+  /// Get owner entrance standee QR code data
+  static Future<ApiResponse<Map<String, dynamic>>> getStandeeQr() async {
+    try {
+      final token = await AuthStorage.getToken();
+      final uri = Uri.parse('${ApiConfig.baseUrl}/owner/attendance/standee-qr');
+      final response = await http
+          .get(uri, headers: _buildHeaders(token: token))
+          .timeout(_timeout);
+
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return ApiResponse(success: true, data: json);
+      } else {
+        return ApiResponse(success: false, message: json['message']?.toString());
+      }
+    } catch (e) {
+      return ApiResponse(success: false, message: _formatNetworkError(e));
+    }
+  }
+
+  /// Get student past memberships and library leave history
+  static Future<ApiResponse<List<Map<String, dynamic>>>> getStudentMembershipHistory() async {
+    try {
+      final token = await AuthStorage.getToken();
+      final uri = Uri.parse('${ApiConfig.baseUrl}/student/memberships/history');
+      final response = await http
+          .get(uri, headers: _buildHeaders(token: token))
+          .timeout(_timeout);
+
+      final decoded = jsonDecode(response.body);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        if (decoded is List) {
+          final list = decoded.map((e) => e as Map<String, dynamic>).toList();
+          return ApiResponse(success: true, data: list);
+        }
+        return ApiResponse(success: true, data: []);
+      } else {
+        return ApiResponse(
+          success: false,
+          message: decoded is Map ? decoded['message']?.toString() : 'Failed to fetch membership history',
+        );
+      }
+    } catch (e) {
+      return ApiResponse(success: false, message: _formatNetworkError(e));
+    }
+  }
+
   /// Change/reallot seat for a member
   static Future<ApiResponse<Map<String, dynamic>>> changeMemberSeat({
     required String studentId,
@@ -990,11 +1064,43 @@ class ApiService {
           .get(uri, headers: _buildHeaders(token: token))
           .timeout(_timeout);
 
-      final json = jsonDecode(response.body) as Map<String, dynamic>;
       if (response.statusCode == 200) {
-        return ApiResponse(success: true, data: json);
+        final decoded = jsonDecode(response.body);
+        if (decoded is List) {
+          final list = decoded;
+          int occupied = 0;
+          int reserved = 0;
+          int available = 0;
+          for (final item in list) {
+            final st = (item is Map ? item['status']?.toString() : '')?.toLowerCase() ?? '';
+            if (st.contains('occupied')) {
+              occupied++;
+            } else if (st.contains('reserved')) {
+              reserved++;
+            } else {
+              available++;
+            }
+          }
+          final map = <String, dynamic>{
+            'totalSeats': list.length,
+            'availableSeats': available,
+            'occupiedSeats': occupied,
+            'reservedSeats': reserved,
+            'seats': list,
+          };
+          return ApiResponse(success: true, data: map);
+        } else if (decoded is Map<String, dynamic>) {
+          return ApiResponse(success: true, data: decoded);
+        }
+        return ApiResponse(success: true, data: {'totalSeats': 0, 'seats': []});
       } else {
-        return ApiResponse(success: false, message: json['message']?.toString());
+        try {
+          final json = jsonDecode(response.body);
+          final msg = json is Map ? json['message']?.toString() : 'Failed to load seats';
+          return ApiResponse(success: false, message: msg);
+        } catch (_) {
+          return ApiResponse(success: false, message: 'Server returned error ${response.statusCode}');
+        }
       }
     } catch (e) {
       return ApiResponse(success: false, message: _formatNetworkError(e));

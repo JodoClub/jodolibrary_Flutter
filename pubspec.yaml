@@ -40,6 +40,8 @@ dependencies:
   connectivity_plus: ^7.3.2
   image_picker: ^1.2.4
   url_launcher: ^6.3.3
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^7.5.0
 
 dev_dependencies:
   flutter_test:

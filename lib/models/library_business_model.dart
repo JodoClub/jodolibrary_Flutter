@@ -54,6 +54,60 @@ class LibraryBusinessModel {
     this.qrPayload,
   });
 
+  LibraryBusinessModel copyWith({
+    String? id,
+    String? name,
+    String? branchName,
+    String? address,
+    String? area,
+    String? city,
+    int? totalSeats,
+    double? rating,
+    double? monthlyPrice,
+    List<String>? photos,
+    String? googleMapsUrl,
+    String? timing,
+    String? operatingDays,
+    String? contactPhone,
+    String? contactEmail,
+    String? websiteUrl,
+    String? whatsappNumber,
+    String? instagramUrl,
+    String? facebookUrl,
+    String? youtubeUrl,
+    List<String>? amenities,
+    String? ownerName,
+    String? ownerUserId,
+    String? qrPayload,
+  }) {
+    return LibraryBusinessModel(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      branchName: branchName ?? this.branchName,
+      address: address ?? this.address,
+      area: area ?? this.area,
+      city: city ?? this.city,
+      totalSeats: totalSeats ?? this.totalSeats,
+      rating: rating ?? this.rating,
+      monthlyPrice: monthlyPrice ?? this.monthlyPrice,
+      photos: photos ?? this.photos,
+      googleMapsUrl: googleMapsUrl ?? this.googleMapsUrl,
+      timing: timing ?? this.timing,
+      operatingDays: operatingDays ?? this.operatingDays,
+      contactPhone: contactPhone ?? this.contactPhone,
+      contactEmail: contactEmail ?? this.contactEmail,
+      websiteUrl: websiteUrl ?? this.websiteUrl,
+      whatsappNumber: whatsappNumber ?? this.whatsappNumber,
+      instagramUrl: instagramUrl ?? this.instagramUrl,
+      facebookUrl: facebookUrl ?? this.facebookUrl,
+      youtubeUrl: youtubeUrl ?? this.youtubeUrl,
+      amenities: amenities ?? this.amenities,
+      ownerName: ownerName ?? this.ownerName,
+      ownerUserId: ownerUserId ?? this.ownerUserId,
+      qrPayload: qrPayload ?? this.qrPayload,
+    );
+  }
+
   String get displayName {
     if (branchName != null && branchName!.trim().isNotEmpty) {
       return '$name - ${branchName!.trim()}';

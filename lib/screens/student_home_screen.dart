@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import '../models/app_models.dart';
 import '../models/library_business_model.dart';
 import '../services/api_config.dart';
@@ -26,7 +27,7 @@ class StudentHomeScreen extends StatefulWidget {
   State<StudentHomeScreen> createState() => _StudentHomeScreenState();
 }
 
-class _StudentHomeScreenState extends State<StudentHomeScreen> {
+class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindingObserver {
   StudentTab _activeTab = StudentTab.home;
   String _searchQuery = '';
 
@@ -45,6 +46,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
 
   // Real Pending Admission Requests & Bookings State
   List<Map<String, dynamic>> _pendingAdmissionRequests = [];
+  List<Map<String, dynamic>> _membershipHistory = [];
   bool _loadingPendingRequests = false;
   Map<String, dynamic>? _activeMembershipData;
   Map<String, dynamic>? _activeLibraryData;
@@ -53,9 +55,24 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadStudentProfileData();
     _fetchExploreLibraries();
     _loadStudentRequestsAndBookings();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadStudentRequestsAndBookings();
+      _loadStudentProfileData();
+    }
   }
 
   Future<void> _loadStudentRequestsAndBookings() async {
@@ -74,11 +91,31 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
     } catch (_) {}
 
     try {
+      final histRes = await ApiService.getStudentMembershipHistory();
+      if (histRes.success && histRes.data != null && mounted) {
+        setState(() {
+          _membershipHistory = histRes.data!;
+        });
+      }
+    } catch (_) {}
+
+    try {
       final dashRes = await ApiService.getStudentDashboard();
       if (dashRes.success && dashRes.data != null && mounted) {
         final d = dashRes.data!;
         final mem = d['membership'] as Map<String, dynamic>?;
         final lib = (d['activeLibrary'] ?? d['library']) as Map<String, dynamic>?;
+        final att = d['attendance'] as Map<String, dynamic>?;
+
+        if (att != null) {
+          setState(() {
+            _isCheckedIn = att['isCheckedIn'] == true;
+            if (att['checkInTime'] != null && att['checkInTime'].toString().isNotEmpty) {
+              _checkInTime = att['checkInTime'].toString();
+            }
+          });
+        }
+
         if (mem != null && lib != null) {
           setState(() {
             _hasActiveMembership = true;
@@ -309,35 +346,144 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
     });
   }
 
-  void _performPunchIn() {
-    setState(() => _scannerStage = 'scanning');
-    Future.delayed(const Duration(milliseconds: 1000), () {
-      final now = TimeOfDay.now();
-      final timeStr =
-          '${now.hourOfPeriod.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} ${now.period == DayPeriod.am ? 'AM' : 'PM'}';
-      setState(() {
-        _checkInTime = timeStr;
-        _isCheckedIn = true;
-        _scannerStage = 'success';
-      });
-      widget.onAttendanceMarked?.call(timeStr, 'check-in');
-      _showToast('Attendance Marked as PRESENT! 🎉', 'Recorded at $timeStr · Library owner notified');
-    });
+  Future<void> _performPunchIn() async {
+    String? payload = _activeLibraryModel?.qrPayload ?? _activeLibraryData?['qrPayload']?.toString();
+    if (payload == null || payload.isEmpty) {
+      final actRes = await ApiService.getStudentActiveLibrary();
+      if (actRes.success && actRes.data != null) {
+        payload = actRes.data!['qrPayload']?.toString();
+      }
+    }
+    if (payload != null && payload.isNotEmpty) {
+      await _handleQrAttendanceScan(payload);
+    } else {
+      _openScannerModal();
+    }
   }
 
-  void _performPunchOut() {
+  Future<void> _performPunchOut() async {
     setState(() => _scannerStage = 'scanning');
-    Future.delayed(const Duration(milliseconds: 1000), () {
-      final now = TimeOfDay.now();
-      final timeStr =
-          '${now.hourOfPeriod.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} ${now.period == DayPeriod.am ? 'AM' : 'PM'}';
+    final res = await ApiService.punchOut();
+    if (!mounted) return;
+    if (res.success && res.data != null) {
+      final timeStr = res.data!['punchOutTime']?.toString() ?? '';
+      final session = res.data!['sessionDuration']?.toString();
       setState(() {
         _isCheckedIn = false;
         _scannerStage = 'success';
       });
       widget.onAttendanceMarked?.call(timeStr, 'check-out');
-      _showToast('Punch Out Recorded Successfully', 'Exit recorded at $timeStr · Owner updated');
-    });
+      _showToast(
+        'Punch Out Recorded Successfully',
+        session != null && session.isNotEmpty ? 'Session: $session · Exit recorded at $timeStr' : 'Recorded at $timeStr',
+      );
+      _loadStudentRequestsAndBookings();
+    } else {
+      setState(() => _scannerStage = 'aiming');
+      _showToast('Punch Out Failed', res.message ?? 'Failed to punch out');
+    }
+  }
+
+  Future<void> _handleQrAttendanceScan(String qrPayload, [void Function(void Function())? setModalState]) async {
+    if (setModalState != null) {
+      setModalState(() => _scannerStage = 'scanning');
+    } else {
+      setState(() => _scannerStage = 'scanning');
+    }
+
+    final res = await ApiService.scanAttendanceQr(qrPayload: qrPayload);
+    if (!mounted) return;
+
+    if (res.success && res.data != null) {
+      final data = res.data!;
+      final punchType = data['punchType']?.toString() ?? (_isCheckedIn ? 'CHECK_OUT' : 'CHECK_IN');
+      final timeStr = data['time']?.toString() ?? '';
+      final sessionDuration = data['sessionDuration']?.toString();
+
+      setState(() {
+        if (punchType == 'CHECK_OUT') {
+          _isCheckedIn = false;
+        } else {
+          _isCheckedIn = true;
+          _checkInTime = timeStr;
+        }
+        _scannerStage = 'success';
+      });
+
+      if (setModalState != null) {
+        setModalState(() => _scannerStage = 'success');
+      }
+
+      widget.onAttendanceMarked?.call(timeStr, punchType == 'CHECK_OUT' ? 'check-out' : 'check-in');
+
+      if (punchType == 'CHECK_OUT') {
+        _showToast(
+          'Punch Out Recorded Successfully',
+          sessionDuration != null && sessionDuration.isNotEmpty
+              ? 'Session: $sessionDuration · Exit at $timeStr'
+              : 'Exit recorded at $timeStr',
+        );
+      } else {
+        _showToast(
+          'Attendance Marked as PRESENT! 🎉',
+          'Checked in at $timeStr · Library owner updated in real-time',
+        );
+      }
+
+      _loadStudentRequestsAndBookings();
+    } else {
+      if (setModalState != null) {
+        setModalState(() => _scannerStage = 'aiming');
+      } else {
+        setState(() => _scannerStage = 'aiming');
+      }
+
+      final code = res.code;
+      final msg = res.message ?? 'Failed to record attendance';
+
+      String errorTitle = 'Verification Failed ❌';
+      String errorBody = msg;
+
+      if (code == 'NO_ACTIVE_MEMBERSHIP') {
+        errorTitle = 'Not Enrolled in Library ❌';
+        errorBody =
+            'You do not have an active membership in this library.\nPlease contact the library owner to enroll and allot your seat.';
+      } else if (code == 'WRONG_LIBRARY') {
+        errorTitle = 'Wrong Library QR ❌';
+        errorBody =
+            'This QR code belongs to a different library than the one you are currently enrolled in.';
+      } else if (code == 'MEMBERSHIP_EXPIRED') {
+        errorTitle = 'Membership Expired ❌';
+        errorBody =
+            'Your library membership has expired. Please renew your plan to continue marking attendance.';
+      } else if (code == 'OUTSIDE_GEOFENCE') {
+        errorTitle = 'Outside Library Boundary ❌';
+        errorBody = 'You must be physically present at the library gate to mark attendance.';
+      }
+
+      _showAttendanceErrorDialog(errorTitle, errorBody);
+    }
+  }
+
+  void _showAttendanceErrorDialog(String title, String body) {
+    showDialog(
+      context: context,
+      builder: (c) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+        content: Text(body, style: const TextStyle(fontSize: 13, height: 1.4)),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(c),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.orange500,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('OK / Understood', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _handleRenewPlan() {
@@ -406,11 +552,21 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
         children: [
           SafeArea(
             bottom: false,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.only(bottom: 24),
-              child: SizedBox(
-                width: double.infinity,
-                child: _buildCurrentTab(),
+            child: RefreshIndicator(
+              onRefresh: () async {
+                await _loadStudentRequestsAndBookings();
+                await _loadStudentProfileData();
+                if (_activeTab == StudentTab.explore) {
+                  await _fetchExploreLibraries();
+                }
+              },
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.only(bottom: 24),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: _buildCurrentTab(),
+                ),
               ),
             ),
           ),
@@ -625,7 +781,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
               // Library Status Chip (Interactive Google Business Profile)
               InkWell(
                 borderRadius: BorderRadius.circular(18),
-                onTap: _openActiveLibraryDetails,
+                onTap: _hasActiveMembership ? _openActiveLibraryDetails : () => setState(() => _activeTab = StudentTab.explore),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
@@ -655,7 +811,10 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    _activeLibraryModel?.displayName ?? 'Achievers Study Hub - Branch 1',
+                                    _activeLibraryModel?.displayName ??
+                                        (_hasActiveMembership
+                                            ? (_activeLibraryData?['name']?.toString() ?? 'Study Hub Library')
+                                            : 'No Active Membership'),
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontWeight: FontWeight.w900,
@@ -667,7 +826,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                                   Text(
                                     _activeLibraryModel != null
                                         ? '${_activeLibraryModel!.area ?? _activeLibraryModel!.city} · ${_activeLibraryModel!.timing}'
-                                        : 'Boring Road · 24×7 Open',
+                                        : (_hasActiveMembership ? 'Patna · 24×7 Open' : 'Tap to explore & find a study hub'),
                                     style: const TextStyle(
                                       color: AppColors.indigo300,
                                       fontSize: 10,
@@ -1305,38 +1464,43 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
-                  Text(
-                    'GATE ATTENDANCE',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.slate400,
-                      letterSpacing: 1,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Text(
+                      'GATE ATTENDANCE',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.slate400,
+                        letterSpacing: 1,
+                      ),
                     ),
-                  ),
-                  SizedBox(height: 2),
-                  Text(
-                    'Attendance & Gate Pass',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.slate900,
+                    SizedBox(height: 2),
+                    Text(
+                      'Attendance & Gate Pass',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.slate900,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
+              const SizedBox(width: 8),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: _isCheckedIn ? AppColors.emerald50 : AppColors.slate100,
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: _isCheckedIn ? AppColors.emerald100 : AppColors.slate200,
+                    color: _isCheckedIn ? AppColors.emerald200 : AppColors.slate200,
                   ),
                 ),
                 child: Row(
@@ -1348,11 +1512,11 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                     ),
                     const SizedBox(width: 5),
                     Text(
-                      _isCheckedIn ? 'Checked-in at $_checkInTime' : 'Not inside premises',
+                      _isCheckedIn ? 'Checked-in · $_checkInTime' : 'Not inside',
                       style: TextStyle(
-                        color: _isCheckedIn ? AppColors.emerald600 : AppColors.slate600,
+                        color: _isCheckedIn ? AppColors.emerald700 : AppColors.slate600,
                         fontSize: 10,
-                        fontWeight: FontWeight.w900,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                   ],
@@ -1526,39 +1690,83 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   Row(
                     children: [
                       Expanded(
-                        child: CustomButton(
-                          label: 'Open Camera Scanner',
-                          height: 46,
-                          leading: const Icon(Icons.camera_alt, size: 16, color: Colors.white),
-                          onPressed: () => _openScannerModal(),
+                        flex: 3,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(16),
+                          onTap: () => _openScannerModal(),
+                          child: Container(
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: AppColors.primary,
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.primary.withValues(alpha: 0.35),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
+                            ),
+                            alignment: Alignment.center,
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.qr_code_scanner_rounded, size: 16, color: Colors.white),
+                                SizedBox(width: 6),
+                                Flexible(
+                                  child: Text(
+                                    'Camera Scanner',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 12,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 8),
-                      InkWell(
-                        borderRadius: BorderRadius.circular(16),
-                        onTap: _isCheckedIn ? _performPunchOut : _performPunchIn,
-                        child: Container(
-                          height: 46,
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.12),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: Colors.white.withOpacity(0.15)),
-                          ),
-                          alignment: Alignment.center,
-                          child: Row(
-                            children: [
-                              const Icon(Icons.bolt, color: AppColors.amber400, size: 16),
-                              const SizedBox(width: 4),
-                              Text(
-                                _isCheckedIn ? 'Punch Out' : 'Quick Punch',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 12,
+                      Expanded(
+                        flex: 2,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(16),
+                          onTap: _isCheckedIn ? _performPunchOut : _performPunchIn,
+                          child: Container(
+                            height: 44,
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+                            ),
+                            alignment: Alignment.center,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.bolt, color: AppColors.amber400, size: 15),
+                                const SizedBox(width: 4),
+                                Flexible(
+                                  child: Text(
+                                    _isCheckedIn ? 'Punch Out' : 'Quick Punch',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 12,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -1704,10 +1912,8 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
 
           // Days of week header
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: const ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']
-                .map((d) => SizedBox(
-                      width: 36,
+                .map((d) => Expanded(
                       child: Text(
                         d,
                         textAlign: TextAlign.center,
@@ -1722,120 +1928,127 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
           ),
           const SizedBox(height: 8),
 
-          // 7-column calendar grid
-          Wrap(
-            spacing: 4,
-            runSpacing: 4,
-            children: [
-              // 3 empty placeholders for Thursday start
-              const SizedBox(width: 36, height: 36),
-              const SizedBox(width: 36, height: 36),
-              const SizedBox(width: 36, height: 36),
-              ..._calendarDays.map((item) {
-                final isSelected = item.day == _selectedCalendarDay;
-                final isToday = item.day == 20;
+          // 7-column responsive calendar grid
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: 3 + _calendarDays.length, // 3 empty placeholders for Thursday start
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 7,
+              mainAxisSpacing: 5,
+              crossAxisSpacing: 5,
+              childAspectRatio: 1.0,
+            ),
+            itemBuilder: (context, index) {
+              if (index < 3) {
+                return const SizedBox.shrink();
+              }
+              final item = _calendarDays[index - 3];
+              final isSelected = item.day == _selectedCalendarDay;
+              final isToday = item.day == 20;
 
-                Color dotColor;
-                if (item.status == 'present') {
-                  dotColor = AppColors.emerald500;
-                } else if (item.status == 'absent') {
-                  dotColor = AppColors.rose500;
-                } else if (item.status == 'half-day') {
-                  dotColor = AppColors.amber500;
-                } else if (item.status == 'holiday') {
-                  dotColor = AppColors.slate300;
-                } else {
-                  dotColor = AppColors.slate200;
-                }
+              Color dotColor;
+              if (item.status == 'present') {
+                dotColor = AppColors.emerald500;
+              } else if (item.status == 'absent') {
+                dotColor = AppColors.rose500;
+              } else if (item.status == 'half-day') {
+                dotColor = AppColors.amber500;
+              } else if (item.status == 'holiday') {
+                dotColor = AppColors.slate300;
+              } else {
+                dotColor = AppColors.slate200;
+              }
 
-                return InkWell(
-                  borderRadius: BorderRadius.circular(10),
-                  onTap: () => setState(() => _selectedCalendarDay = item.day),
-                  child: Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: isSelected ? AppColors.indigo50 : Colors.transparent,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: isSelected
-                            ? AppColors.indigo950
-                            : isToday
-                                ? AppColors.orange500
-                                : Colors.transparent,
-                        width: isSelected ? 2 : 1.5,
-                      ),
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          '${item.day}',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
-                            color: item.status == 'upcoming'
-                                ? AppColors.slate300
-                                : AppColors.slate800,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        CircleAvatar(radius: 2, backgroundColor: dotColor),
-                      ],
+              return InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: () => setState(() => _selectedCalendarDay = item.day),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isSelected ? AppColors.indigo50 : Colors.transparent,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: isSelected
+                          ? AppColors.indigo950
+                          : isToday
+                              ? AppColors.orange500
+                              : Colors.transparent,
+                      width: isSelected ? 2 : 1.5,
                     ),
                   ),
-                );
-              }),
-            ],
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        '${item.day}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
+                          color: item.status == 'upcoming'
+                              ? AppColors.slate300
+                              : AppColors.slate800,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      CircleAvatar(radius: 2, backgroundColor: dotColor),
+                    ],
+                  ),
+                ),
+              );
+            },
           ),
           const SizedBox(height: 14),
 
           // Day Inspector Banner
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
               color: AppColors.slate50,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: AppColors.slate200),
             ),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 5,
-                      backgroundColor: selectedDayInfo.status == 'present'
-                          ? AppColors.emerald500
-                          : selectedDayInfo.status == 'absent'
-                              ? AppColors.rose500
-                              : selectedDayInfo.status == 'half-day'
-                                  ? AppColors.amber500
-                                  : AppColors.slate400,
-                    ),
-                    const SizedBox(width: 10),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Oct ${selectedDayInfo.day}, 2026 ${selectedDayInfo.day == 20 ? "(Today)" : ""} · ${selectedDayInfo.status.toUpperCase()}',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w900,
-                            color: AppColors.slate900,
-                          ),
-                        ),
-                        Text(
-                          selectedDayInfo.inTime != null && selectedDayInfo.outTime != null
-                              ? 'In: ${selectedDayInfo.inTime} • Out: ${selectedDayInfo.outTime} (${selectedDayInfo.hours})'
-                              : selectedDayInfo.note ?? 'No log recorded',
-                          style: const TextStyle(fontSize: 10, color: AppColors.slate500),
-                        ),
-                      ],
-                    ),
-                  ],
+                CircleAvatar(
+                  radius: 5,
+                  backgroundColor: selectedDayInfo.status == 'present'
+                      ? AppColors.emerald500
+                      : selectedDayInfo.status == 'absent'
+                          ? AppColors.rose500
+                          : selectedDayInfo.status == 'half-day'
+                              ? AppColors.amber500
+                              : AppColors.slate400,
                 ),
-                if (selectedDayInfo.hours != null)
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Oct ${selectedDayInfo.day}, 2026 ${selectedDayInfo.day == 20 ? "(Today)" : ""} · ${selectedDayInfo.status.toUpperCase()}',
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.slate900,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        selectedDayInfo.inTime != null && selectedDayInfo.outTime != null
+                            ? 'In: ${selectedDayInfo.inTime} • Out: ${selectedDayInfo.outTime}'
+                            : selectedDayInfo.note ?? 'No log recorded',
+                        style: const TextStyle(fontSize: 10, color: AppColors.slate500),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                if (selectedDayInfo.hours != null) ...[
+                  const SizedBox(width: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
@@ -1852,6 +2065,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                       ),
                     ),
                   ),
+                ],
               ],
             ),
           ),
@@ -2163,14 +2377,16 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   // TAB 2: EXPLORE TAB
   // ==========================================
   Widget _buildExploreTab() {
-    final nearby = [
-      ['Gyan Niketan Library', 'Kankarbagh · 2.4 km', '12 seats'],
-      ['The Focus Room', 'Rajendra Nagar · 3.1 km', '7 seats'],
-      ['Apex Study Zone', 'Bailey Road · 4.0 km', '15 seats'],
-    ];
+    final q = _searchQuery.trim().toLowerCase();
+    final recName = (_exploreRecommended?['name']?.toString() ?? '').toLowerCase();
+    final recArea = (_exploreRecommended?['area']?.toString() ?? '').toLowerCase();
+    final bool showRecommended = _exploreRecommended != null &&
+        (q.isEmpty || recName.contains(q) || recArea.contains(q));
 
-    final filtered = nearby.where((n) {
-      return '${n[0]} ${n[1]}'.toLowerCase().contains(_searchQuery.toLowerCase());
+    final filteredNearby = _exploreNearby.where((lib) {
+      final name = (lib['name']?.toString() ?? '').toLowerCase();
+      final area = (lib['area']?.toString() ?? '').toLowerCase();
+      return q.isEmpty || name.contains(q) || area.contains(q);
     }).toList();
 
     return Column(
@@ -2270,171 +2486,173 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
               const SizedBox(height: 24),
 
               // Recommended section
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: const [
-                  Text(
-                    'Recommended for you',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.slate900),
-                  ),
-                  Text(
-                    'See all',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.orange500),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
+              if (showRecommended) ...[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: const [
+                    Text(
+                      'Recommended for you',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.slate900),
+                    ),
+                    Text(
+                      'Verified',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.orange500),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
 
-              // Recommended Library Card
-              InkWell(
-                borderRadius: BorderRadius.circular(24),
-                onTap: _openRecommendedLibraryDetails,
-                child: Container(
-                  decoration: BoxDecoration(
-                  color: Colors.white,
+                // Recommended Library Card
+                InkWell(
                   borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: AppColors.slate200),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.04),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      height: 150,
-                      decoration: BoxDecoration(
-                        color: AppColors.indigo950,
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-                        image: DecorationImage(
-                          image: NetworkImage(
-                            (_exploreRecommended?['photoUrl'] != null && _exploreRecommended!['photoUrl'].toString().isNotEmpty)
-                                ? (_exploreRecommended!['photoUrl'].toString().startsWith('/')
-                                    ? '${ApiConfig.baseUrl.replaceAll('/api/v1', '')}${_exploreRecommended!['photoUrl']}'
-                                    : _exploreRecommended!['photoUrl'].toString())
-                                : 'https://images.unsplash.com/photo-1762857995550-1fc51c8fbf2d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixlib=rb-4.1.0&q=80&w=1080',
-                          ),
-                          fit: BoxFit.cover,
+                  onTap: _openRecommendedLibraryDetails,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: AppColors.slate200),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.04),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
                         ),
-                      ),
-                      child: Stack(
-                        children: [
-                          Positioned(
-                            left: 12,
-                            top: 12,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.95),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                '${_exploreRecommended?['seatsAvailable'] ?? 18} seats available',
-                                style: const TextStyle(
-                                  color: AppColors.emerald600,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                            ),
-                          ),
-                          Positioned(
-                            right: 12,
-                            top: 12,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: AppColors.indigo950.withOpacity(0.9),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                '★ ${((_exploreRecommended?['rating'] as num?)?.toDouble() ?? 4.9).toStringAsFixed(1)}',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                      ],
                     ),
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          height: 150,
+                          decoration: BoxDecoration(
+                            color: AppColors.indigo950,
+                            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                            image: DecorationImage(
+                              image: NetworkImage(
+                                (_exploreRecommended?['photoUrl'] != null && _exploreRecommended!['photoUrl'].toString().isNotEmpty)
+                                    ? (_exploreRecommended!['photoUrl'].toString().startsWith('/')
+                                        ? '${ApiConfig.baseUrl.replaceAll('/api/v1', '')}${_exploreRecommended!['photoUrl']}'
+                                        : _exploreRecommended!['photoUrl'].toString())
+                                    : 'https://images.unsplash.com/photo-1762857995550-1fc51c8fbf2d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixlib=rb-4.1.0&q=80&w=1080',
+                              ),
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                          child: Stack(
                             children: [
-                              Expanded(
-                                child: Text(
-                                  _exploreRecommended?['name']?.toString() ?? 'Saraswati Study Hub',
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w900,
-                                    color: AppColors.slate900,
+                              Positioned(
+                                left: 12,
+                                top: 12,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.95),
+                                    borderRadius: BorderRadius.circular(20),
                                   ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                                  child: Text(
+                                    '${_exploreRecommended?['seatsAvailable'] ?? 0} seats available',
+                                    style: const TextStyle(
+                                      color: AppColors.emerald600,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
                                 ),
                               ),
-                              const SizedBox(width: 8),
-                              Text(
-                                '₹${((_exploreRecommended?['monthlyPrice'] as num?)?.toInt() ?? 1499)}/mo',
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w900,
-                                  color: AppColors.slate900,
+                              Positioned(
+                                right: 12,
+                                top: 12,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.indigo950.withOpacity(0.9),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    '★ ${((_exploreRecommended?['rating'] as num?)?.toDouble() ?? 5.0).toStringAsFixed(1)}',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
                                 ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 4),
-                          Row(
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Icon(Icons.location_on_outlined, size: 14, color: AppColors.slate400),
-                              const SizedBox(width: 4),
-                              Text(
-                                _exploreRecommended?['area']?.toString() ?? 'Boring Road · 1.2 km',
-                                style: const TextStyle(fontSize: 11, color: AppColors.slate400),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      _exploreRecommended?['name']?.toString() ?? 'Study Hub Library',
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w900,
+                                        color: AppColors.slate900,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '₹${((_exploreRecommended?['monthlyPrice'] as num?)?.toInt() ?? 0)}/mo',
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w900,
+                                      color: AppColors.slate900,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  const Icon(Icons.location_on_outlined, size: 14, color: AppColors.slate400),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    _exploreRecommended?['area']?.toString() ?? 'Patna',
+                                    style: const TextStyle(fontSize: 11, color: AppColors.slate400),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: ['24×7', 'Wi-Fi', 'AC', 'Silent Zone'].map((amenity) {
+                                  return Container(
+                                    margin: const EdgeInsets.only(right: 6),
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.slate100,
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Text(
+                                      amenity,
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.slate600,
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 12),
-                          Row(
-                            children: ['24×7', 'Wi-Fi', 'AC', 'Silent Zone'].map((amenity) {
-                              return Container(
-                                margin: const EdgeInsets.only(right: 6),
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: AppColors.slate100,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Text(
-                                  amenity,
-                                  style: const TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppColors.slate600,
-                                  ),
-                                ),
-                              );
-                            }).toList(),
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
-              ),
-              ),
-              const SizedBox(height: 24),
+                const SizedBox(height: 24),
+              ],
 
               // Nearby study spaces list
               Row(
@@ -2453,13 +2671,8 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                 ],
               ),
               const SizedBox(height: 12),
-              if (_exploreNearby.isNotEmpty)
-                ..._exploreNearby.where((lib) {
-                  final name = (lib['name']?.toString() ?? '').toLowerCase();
-                  final area = (lib['area']?.toString() ?? '').toLowerCase();
-                  final q = _searchQuery.toLowerCase();
-                  return name.contains(q) || area.contains(q);
-                }).map((item) {
+              if (filteredNearby.isNotEmpty)
+                ...filteredNearby.map((item) {
                   final String? photo = item['photoUrl']?.toString();
                   final String resolvedPhoto = (photo != null && photo.isNotEmpty)
                       ? (photo.startsWith('/') ? '${ApiConfig.baseUrl.replaceAll('/api/v1', '')}$photo' : photo)
@@ -2522,7 +2735,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  '${item['area'] ?? 'Patna'} · ₹${((item['monthlyPrice'] as num?)?.toInt() ?? 1499)}/mo · ★ ${((item['rating'] as num?)?.toDouble() ?? 4.0).toStringAsFixed(1)}',
+                                  '${item['area'] ?? 'Patna'} · ₹${((item['monthlyPrice'] as num?)?.toInt() ?? 0)}/mo · ★ ${((item['rating'] as num?)?.toDouble() ?? 5.0).toStringAsFixed(1)}',
                                   style: const TextStyle(fontSize: 11, color: AppColors.slate400),
                                 ),
                               ],
@@ -2548,64 +2761,86 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                     ),
                   );
                 })
-              else
-                ...filtered.map((item) {
-                  return InkWell(
+              else if (showRecommended)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
                     borderRadius: BorderRadius.circular(20),
-                    onTap: () => _openNearbyLibraryDetails(item[0], item[1]),
-                    child: Container(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: AppColors.slate200),
+                    border: Border.all(color: AppColors.slate200),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: AppColors.indigo50,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(Icons.verified_outlined, color: AppColors.indigo950, size: 22),
                       ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: AppColors.indigo50,
-                              borderRadius: BorderRadius.circular(14),
+                      const SizedBox(width: 14),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'All Verified Libraries Listed Above',
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.slate900),
                             ),
-                            alignment: Alignment.center,
-                            child: const Icon(Icons.apartment, color: AppColors.indigo950, size: 20),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  item[0],
-                                  style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w900,
-                                    color: AppColors.slate900,
-                                  ),
-                                ),
-                                Text(
-                                  item[1],
-                                  style: const TextStyle(fontSize: 11, color: AppColors.slate400),
-                                ),
-                              ],
+                            SizedBox(height: 2),
+                            Text(
+                              'Tap the recommended library to view desks, shift timings, and admission details.',
+                              style: TextStyle(fontSize: 11, color: AppColors.slate500, height: 1.3),
                             ),
-                          ),
-                          Text(
-                            item[2],
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w900,
-                              color: AppColors.emerald600,
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                  );
-                }),
+                    ],
+                  ),
+                )
+              else
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AppColors.slate200),
+                  ),
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 52,
+                        height: 52,
+                        decoration: const BoxDecoration(
+                          color: AppColors.indigo50,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.apartment_outlined, color: AppColors.indigo950, size: 26),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        q.isNotEmpty ? 'No Libraries Matching "$_searchQuery"' : 'No Libraries Found',
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.slate900,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        q.isNotEmpty
+                            ? 'Try searching by a different name or area.'
+                            : 'Currently registered libraries will show here as they join the platform.',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 12, color: AppColors.slate500),
+                      ),
+                    ],
+                  ),
+                ),
             ],
           ),
         ),
@@ -2954,6 +3189,177 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   ),
                 ),
               ],
+              if (_membershipHistory.isNotEmpty) ...[
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    const Icon(Icons.history_rounded, size: 16, color: AppColors.slate500),
+                    const SizedBox(width: 6),
+                    Text(
+                      'PAST MEMBERSHIPS & LEAVE HISTORY (${_membershipHistory.length})',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.slate500,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                ..._membershipHistory.map((hist) {
+                  final libName = hist['libraryName']?.toString() ?? 'Library';
+                  final branch = hist['branchName']?.toString() ?? '';
+                  final address = hist['address']?.toString() ?? '';
+                  final seat = hist['seatLabel']?.toString() ?? 'Unassigned';
+                  final plan = hist['planName']?.toString() ?? 'Standard';
+                  final joined = hist['joinedDate']?.toString() ?? 'N/A';
+                  final left = hist['leftDate']?.toString() ?? 'N/A';
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppColors.slate200),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.slate900.withValues(alpha: 0.03),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                libName,
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w900,
+                                  color: AppColors.slate900,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFEF2F2),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: const Color(0xFFFECACA)),
+                              ),
+                              child: const Text(
+                                'Ex-Member / Left',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.red,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (branch.isNotEmpty || address.isNotEmpty) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            branch.isNotEmpty && address.isNotEmpty
+                                ? '$branch · $address'
+                                : (branch.isNotEmpty ? branch : address),
+                            style: const TextStyle(fontSize: 11, color: AppColors.slate500),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 6,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: AppColors.slate100,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.chair_rounded, size: 12, color: AppColors.slate600),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'Seat: $seat',
+                                    style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: AppColors.slate700),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: AppColors.indigo50,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.card_membership_rounded, size: 12, color: AppColors.indigo800),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    plan,
+                                    style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: AppColors.indigo950),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: AppColors.slate50,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: AppColors.slate100),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(Icons.login_rounded, size: 13, color: AppColors.emerald600),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'Enrolled: $joined',
+                                    style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: AppColors.slate700),
+                                  ),
+                                ],
+                              ),
+                              Row(
+                                children: [
+                                  const Icon(Icons.logout_rounded, size: 13, color: Colors.red),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'Left: $left',
+                                    style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Colors.red),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+              ],
               const SizedBox(height: 16),
               CustomButton(
                 label: 'Book Another Desk or Shift',
@@ -3107,7 +3513,6 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                     const SizedBox(height: 14),
                     _buildProfileRow('Full Name', _studentName),
                     _buildProfileRow('Mobile', _studentPhone.isNotEmpty ? _studentPhone : '+91 98765 43210'),
-                    _buildProfileRow('Active Library', _activeLibrary, onTap: _hasActiveMembership ? _openActiveLibraryDetails : null),
                     _buildProfileRow('Student ID', _studentCode.isNotEmpty ? _studentCode : 'Pending Admission'),
                     _buildProfileRow('Target Exam', _examCategory),
                     _buildProfileRow('Emergency Contact', _emergencyContact.isNotEmpty ? _emergencyContact : 'Not specified'),
@@ -3536,49 +3941,22 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   }
 
   void _openActiveLibraryDetails() {
-    final model = _activeLibraryModel ??
-        const LibraryBusinessModel(
-          id: '00000000-0000-0000-0000-00000000b001',
-          name: 'Achievers Study Hub',
-          branchName: 'Branch 1',
-          address: 'Boring Road, Patna, Bihar 800001',
-          area: 'Boring Road',
-          city: 'Patna',
-          totalSeats: 60,
-          rating: 4.9,
-          monthlyPrice: 1499,
-          photos: [
-            'https://images.unsplash.com/photo-1521587760476-6c12a4b040da?auto=format&fit=crop&w=1200&q=80',
-            'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?auto=format&fit=crop&w=1200&q=80',
-            'https://images.unsplash.com/photo-1568667256549-094345857637?auto=format&fit=crop&w=1200&q=80',
-            'https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?auto=format&fit=crop&w=1200&q=80',
-            'https://images.unsplash.com/photo-1507842229451-7f01be7fe880?auto=format&fit=crop&w=1200&q=80',
-          ],
-          googleMapsUrl: 'https://maps.google.com/?q=Boring+Road+Patna',
-          timing: '24 Hours Open (24×7)',
-          operatingDays: 'Mon - Sun (All 7 Days Open)',
-          contactPhone: '+91 98765 43210',
-          contactEmail: 'contact@achieversstudyhub.com',
-          websiteUrl: 'https://24sevenlibrary.in',
-          whatsappNumber: '+919876543210',
-          amenities: [
-            'wifi', 'ac', 'ro_water', 'power_backup', 'lockers', 'ergonomic_chairs',
-            'charging_points', 'cctv', 'biometric', 'open_24_7', 'silent_zone',
-            'dining_area', 'newspapers', 'book_bank', 'washrooms', 'two_wheeler_parking',
-            'four_wheeler_parking', 'discussion_room', 'tea_coffee', 'reserved_desk',
-            'fire_safety', 'printing', 'phone_booth', 'girls_section'
-          ],
-        );
-
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => LibraryDetailsScreen(
-          libraryId: _activeLibraryModel?.id,
-          initialData: model,
+    if (_activeLibraryModel != null) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => LibraryDetailsScreen(
+            libraryId: _activeLibraryModel?.id,
+            initialData: _activeLibraryModel,
+          ),
         ),
-      ),
-    );
+      );
+      return;
+    }
+    final libId = _activeLibraryData?['id']?.toString();
+    if (libId != null && libId.isNotEmpty) {
+      _openLibraryDetailsById(libId);
+    }
   }
 
   void _openLibraryDetailsById(String? id) {
@@ -3594,86 +3972,10 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   }
 
   void _openRecommendedLibraryDetails() {
-    if (_exploreRecommended != null && _exploreRecommended!['id'] != null) {
-      _openLibraryDetailsById(_exploreRecommended!['id']?.toString());
-      return;
+    final id = _exploreRecommended?['id']?.toString();
+    if (id != null && id.isNotEmpty) {
+      _openLibraryDetailsById(id);
     }
-    const recommended = LibraryBusinessModel(
-      id: 'recommended-lib-1',
-      name: 'Saraswati Study Hub',
-      branchName: 'Main Campus',
-      address: 'Near Boring Road Crossing, Patna, Bihar 800001',
-      area: 'Boring Road',
-      city: 'Patna',
-      totalSeats: 80,
-      rating: 4.9,
-      monthlyPrice: 1499,
-      photos: [
-        'https://images.unsplash.com/photo-1762857995550-1fc51c8fbf2d?auto=format&fit=crop&w=1200&q=80',
-        'https://images.unsplash.com/photo-1521587760476-6c12a4b040da?auto=format&fit=crop&w=1200&q=80',
-        'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?auto=format&fit=crop&w=1200&q=80',
-        'https://images.unsplash.com/photo-1568667256549-094345857637?auto=format&fit=crop&w=1200&q=80',
-        'https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?auto=format&fit=crop&w=1200&q=80',
-      ],
-      googleMapsUrl: 'https://maps.google.com/?q=Boring+Road+Crossing+Patna',
-      timing: '24 Hours Open (24×7)',
-      operatingDays: 'Mon - Sun (All 7 Days Open)',
-      contactPhone: '+91 98765 43211',
-      contactEmail: 'info@saraswatistudyhub.com',
-      websiteUrl: 'https://24sevenlibrary.in/#facilities',
-      whatsappNumber: '+919876543211',
-      amenities: [
-        'wifi', 'ac', 'ro_water', 'power_backup', 'lockers', 'ergonomic_chairs',
-        'charging_points', 'cctv', 'biometric', 'open_24_7', 'silent_zone',
-        'dining_area', 'newspapers', 'washrooms', 'two_wheeler_parking', 'tea_coffee'
-      ],
-    );
-
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const LibraryDetailsScreen(
-          initialData: recommended,
-        ),
-      ),
-    );
-  }
-
-  void _openNearbyLibraryDetails(String name, String locationInfo) {
-    final nearby = LibraryBusinessModel(
-      id: 'nearby-${name.toLowerCase().replaceAll(RegExp(r'\s+'), '-')}',
-      name: name,
-      address: '$locationInfo, Patna',
-      city: 'Patna',
-      totalSeats: 50,
-      rating: 4.8,
-      monthlyPrice: 1299,
-      photos: const [
-        'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?auto=format&fit=crop&w=1200&q=80',
-        'https://images.unsplash.com/photo-1521587760476-6c12a4b040da?auto=format&fit=crop&w=1200&q=80',
-        'https://images.unsplash.com/photo-1568667256549-094345857637?auto=format&fit=crop&w=1200&q=80',
-        'https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?auto=format&fit=crop&w=1200&q=80',
-        'https://images.unsplash.com/photo-1507842229451-7f01be7fe880?auto=format&fit=crop&w=1200&q=80',
-      ],
-      googleMapsUrl: 'https://maps.google.com/?q=${Uri.encodeComponent('$name, Patna')}',
-      timing: '06:00 AM - 11:00 PM',
-      operatingDays: 'Mon - Sun (All 7 Days Open)',
-      contactPhone: '+91 98765 43212',
-      whatsappNumber: '+919876543212',
-      amenities: const [
-        'wifi', 'ac', 'ro_water', 'power_backup', 'lockers', 'ergonomic_chairs',
-        'charging_points', 'cctv', 'silent_zone', 'washrooms'
-      ],
-    );
-
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => LibraryDetailsScreen(
-          initialData: nearby,
-        ),
-      ),
-    );
   }
 
   Widget _buildProfileRow(String label, String value, {bool isStatus = false, VoidCallback? onTap}) {
@@ -3744,7 +4046,14 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   Widget _buildNavTab(StudentTab tab, IconData icon, String label) {
     final isActive = _activeTab == tab;
     return InkWell(
-      onTap: () => setState(() => _activeTab = tab),
+      onTap: () {
+        setState(() => _activeTab = tab);
+        _loadStudentRequestsAndBookings();
+        _loadStudentProfileData();
+        if (tab == StudentTab.explore) {
+          _fetchExploreLibraries();
+        }
+      },
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         child: Column(
@@ -3778,9 +4087,16 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
       _scannerStage = 'aiming';
       _torchOn = false;
     });
+
+    final MobileScannerController scannerController = MobileScannerController(
+      detectionSpeed: DetectionSpeed.normal,
+      facing: CameraFacing.back,
+      torchEnabled: false,
+    );
+
     showDialog(
       context: context,
-      barrierColor: Colors.black.withOpacity(0.85),
+      barrierColor: Colors.black.withValues(alpha: 0.85),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setModalState) {
           return Dialog(
@@ -3820,7 +4136,10 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                       Row(
                         children: [
                           IconButton(
-                            onPressed: () => setModalState(() => _torchOn = !_torchOn),
+                            onPressed: () {
+                              scannerController.toggleTorch();
+                              setModalState(() => _torchOn = !_torchOn);
+                            },
                             icon: Icon(
                               Icons.bolt,
                               color: _torchOn ? AppColors.amber400 : Colors.white,
@@ -3837,55 +4156,94 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   const SizedBox(height: 20),
 
                   if (_scannerStage != 'success') ...[
-                    // Viewfinder box
-                    Container(
-                      width: 200,
-                      height: 200,
-                      decoration: BoxDecoration(
-                        color: Colors.black,
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(
-                          color: _torchOn ? AppColors.amber400 : AppColors.orange500,
-                          width: 2,
+                    // Real Camera Viewfinder box
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(24),
+                      child: Container(
+                        width: 220,
+                        height: 220,
+                        decoration: BoxDecoration(
+                          color: Colors.black,
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(
+                            color: _torchOn ? AppColors.amber400 : AppColors.orange500,
+                            width: 2.5,
+                          ),
                         ),
-                      ),
-                      alignment: Alignment.center,
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          const QRCodeGraphic(size: 130),
-                          if (_scannerStage == 'scanning')
-                            const CircularProgressIndicator(color: AppColors.orange500),
-                        ],
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            MobileScanner(
+                              controller: scannerController,
+                              onDetect: (capture) {
+                                if (_scannerStage == 'scanning' || _scannerStage == 'success') return;
+                                final barcodes = capture.barcodes;
+                                for (final barcode in barcodes) {
+                                  final raw = barcode.rawValue;
+                                  if (raw != null && raw.trim().isNotEmpty) {
+                                    _handleQrAttendanceScan(raw.trim(), setModalState);
+                                    break;
+                                  }
+                                }
+                              },
+                              errorBuilder: (context, error) {
+                                return Container(
+                                  color: Colors.black87,
+                                  padding: const EdgeInsets.all(16),
+                                  alignment: Alignment.center,
+                                  child: const Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.videocam_off_rounded, color: Colors.white54, size: 36),
+                                      SizedBox(height: 8),
+                                      Text(
+                                        'Camera Viewfinder',
+                                        style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800),
+                                      ),
+                                      SizedBox(height: 4),
+                                      Text(
+                                        'Point camera at library standee QR or use button below',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(color: AppColors.slate400, fontSize: 10),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                            if (_scannerStage == 'scanning')
+                              Container(
+                                color: Colors.black54,
+                                child: const Center(
+                                  child: CircularProgressIndicator(color: AppColors.orange500),
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
                     const SizedBox(height: 18),
                     const Text(
-                      'Camera Active · Point at gate standee or desk #B-14 QR code',
+                      'Camera Active · Point at gate standee or desk QR code',
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 11, color: AppColors.slate400),
                     ),
                     const SizedBox(height: 20),
                     CustomButton(
-                      label: _isCheckedIn ? 'Scan to Punch Out (Mark Exit)' : 'Scan & Mark Attendance (PRESENT)',
+                      label: _isCheckedIn ? 'Punch Out (Mark Exit)' : 'Scan & Punch In (PRESENT)',
                       onPressed: () {
-                        setModalState(() => _scannerStage = 'scanning');
-                        Future.delayed(const Duration(milliseconds: 1200), () {
-                          if (!mounted) return;
-                          final now = TimeOfDay.now();
-                          final timeStr =
-                              '${now.hourOfPeriod.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} ${now.period == DayPeriod.am ? 'AM' : 'PM'}';
-                          setState(() {
-                            if (_isCheckedIn) {
-                              _isCheckedIn = false;
-                            } else {
-                              _isCheckedIn = true;
-                              _checkInTime = timeStr;
-                            }
-                          });
-                          widget.onAttendanceMarked?.call(timeStr, _isCheckedIn ? 'check-in' : 'check-out');
-                          setModalState(() => _scannerStage = 'success');
-                        });
+                        if (_isCheckedIn) {
+                          _performPunchOut();
+                          Navigator.of(ctx).pop();
+                        } else {
+                          String? payload = _activeLibraryModel?.qrPayload ?? _activeLibraryData?['qrPayload']?.toString();
+                          if (payload != null && payload.isNotEmpty) {
+                            _handleQrAttendanceScan(payload, setModalState);
+                          } else {
+                            _performPunchIn();
+                            Navigator.of(ctx).pop();
+                          }
+                        }
                       },
                     ),
                   ] else ...[
@@ -3930,7 +4288,9 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
           );
         },
       ),
-    );
+    ).then((_) {
+      scannerController.dispose();
+    });
   }
 
   void _openQRModal() {

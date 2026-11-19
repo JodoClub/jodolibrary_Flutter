@@ -1,13 +1,51 @@
 import 'package:flutter/material.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import '../theme/app_theme.dart';
 
 class QRCodeGraphic extends StatelessWidget {
   final double size;
+  final String? data;
 
-  const QRCodeGraphic({super.key, this.size = 110});
+  const QRCodeGraphic({super.key, this.size = 110, this.data});
 
   @override
   Widget build(BuildContext context) {
+    if (data != null && data!.trim().isNotEmpty) {
+      return Container(
+        width: size,
+        height: size,
+        padding: EdgeInsets.all(size * 0.05),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(size * 0.10),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(size * 0.06),
+          child: QrImageView(
+            data: data!.trim(),
+            version: QrVersions.auto,
+            size: size,
+            backgroundColor: Colors.white,
+            eyeStyle: const QrEyeStyle(
+              eyeShape: QrEyeShape.square,
+              color: AppColors.slate900,
+            ),
+            dataModuleStyle: const QrDataModuleStyle(
+              dataModuleShape: QrDataModuleShape.square,
+              color: AppColors.slate900,
+            ),
+          ),
+        ),
+      );
+    }
+
     return Container(
       width: size,
       height: size,

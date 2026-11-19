@@ -33,6 +33,8 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
   PartnerTab _activeTab = PartnerTab.overview;
   int _selectedSeat = 1;
   String _seatFilter = 'all'; // 'all', 'occupied', 'reserved', 'available'
+  bool _seatsListView = true; // Default to the requested List View (Left: Seat #, Right: Alloted to)
+  String _seatSearch = '';
   String _memberSearch = '';
 
   // Real Owner Profile State
@@ -47,8 +49,11 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
 
   // Real Members & Admission Requests State
   List<MemberInfo> _members = [];
+  List<Map<String, dynamic>> _removedMembers = [];
   List<Map<String, dynamic>> _pendingRequests = [];
   bool _loadingMembers = false;
+  bool _loadingRemovedMembers = false;
+  String _membersSubTab = 'active'; // 'active' or 'removed'
   bool _loadingFloorMap = false;
   List<SeatInfo> _floorMapSeats = [];
   int _occupiedSeatsCount = 0;
@@ -76,6 +81,15 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
     } catch (_) {}
 
     try {
+      final remRes = await ApiService.getRemovedMembers();
+      if (remRes.success && remRes.data != null && mounted) {
+        setState(() {
+          _removedMembers = remRes.data!;
+        });
+      }
+    } catch (_) {}
+
+    try {
       final reqRes = await ApiService.getOwnerAdmissionRequests();
       if (reqRes.success && reqRes.data != null && mounted) {
         setState(() {
@@ -89,6 +103,24 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
 
     if (mounted) {
       setState(() => _loadingMembers = false);
+    }
+  }
+
+  Future<void> _loadRemovedMembers() async {
+    if (!mounted) return;
+    setState(() => _loadingRemovedMembers = true);
+    try {
+      final res = await ApiService.getRemovedMembers();
+      if (res.success && res.data != null && mounted) {
+        setState(() {
+          _removedMembers = res.data!;
+          _loadingRemovedMembers = false;
+        });
+      } else if (mounted) {
+        setState(() => _loadingRemovedMembers = false);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loadingRemovedMembers = false);
     }
   }
 
@@ -240,6 +272,17 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
       validTill: 'N/A',
       shiftTiming: 'Available all shifts',
     );
+  }
+
+  MemberInfo? _getMemberForSeat(int seatNumber) {
+    for (final m in _members) {
+      final s = m.seat.toLowerCase();
+      final digits = RegExp(r'\d+').allMatches(s).map((match) => match.group(0)).toList();
+      if (digits.contains('$seatNumber')) {
+        return m;
+      }
+    }
+    return null;
   }
 
   @override
@@ -898,6 +941,30 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
     final seatData = _getSeatInfo(_selectedSeat);
     final availCount = (totalSeats - _occupiedSeatsCount - _reservedSeatsCount).clamp(0, totalSeats);
 
+    // Compute list of seats to display
+    final List<int> seatNumbers = List.generate(totalSeats, (i) => i + 1);
+    final filteredSeats = seatNumbers.where((num) {
+      final seat = _getSeatInfo(num);
+      final stLower = seat.status.toLowerCase();
+      final isOccupied = stLower.contains('occupied');
+      final isReserved = stLower.contains('reserved');
+      final isAvailable = !isOccupied && !isReserved;
+
+      if (_seatFilter == 'occupied' && !isOccupied) return false;
+      if (_seatFilter == 'reserved' && !isReserved) return false;
+      if (_seatFilter == 'available' && !isAvailable) return false;
+
+      if (_seatSearch.trim().isNotEmpty) {
+        final q = _seatSearch.trim().toLowerCase();
+        final member = _getMemberForSeat(num);
+        final name = (member?.name ?? seat.student).toLowerCase();
+        final numStr = '$num';
+        if (!numStr.contains(q) && !name.contains(q)) return false;
+      }
+
+      return true;
+    }).toList();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -919,19 +986,55 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                       color: Colors.white,
                     ),
                   ),
+                  // View mode toggle: List (default) vs Grid
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: AppColors.emerald500.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(20),
+                      color: Colors.white.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Text(
-                      '$totalSeats Total Desks',
-                      style: const TextStyle(
-                        color: AppColors.emerald300,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
-                      ),
+                    padding: const EdgeInsets.all(2),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        InkWell(
+                          onTap: () => setState(() => _seatsListView = true),
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: _seatsListView ? AppColors.orange500 : Colors.transparent,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.view_agenda_rounded, size: 13, color: Colors.white),
+                                SizedBox(width: 4),
+                                Text('List', style: TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.w800)),
+                              ],
+                            ),
+                          ),
+                        ),
+                        InkWell(
+                          onTap: () => setState(() => _seatsListView = false),
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: !_seatsListView ? AppColors.orange500 : Colors.transparent,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.grid_view_rounded, size: 13, color: Colors.white),
+                                SizedBox(width: 4),
+                                Text('Grid', style: TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.w800)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -955,150 +1058,630 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                   ],
                 ),
               ),
+
+              const SizedBox(height: 12),
+
+              // Search bar
+              Container(
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+                ),
+                child: TextField(
+                  style: const TextStyle(color: Colors.white, fontSize: 12.5),
+                  onChanged: (v) => setState(() => _seatSearch = v),
+                  decoration: InputDecoration(
+                    hintText: 'Search seat number or student name...',
+                    hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 12),
+                    prefixIcon: Icon(Icons.search, color: Colors.white.withValues(alpha: 0.6), size: 18),
+                    suffixIcon: _seatSearch.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, color: Colors.white70, size: 16),
+                            onPressed: () => setState(() => _seatSearch = ''),
+                          )
+                        : null,
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
 
         Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            children: [
-              // Seats Grid
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: AppColors.slate200),
-                ),
-                child: _loadingFloorMap
-                    ? const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(24),
-                          child: CircularProgressIndicator(color: AppColors.orange500),
-                        ),
-                      )
-                    : GridView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 6,
-                          mainAxisSpacing: 8,
-                          crossAxisSpacing: 8,
-                        ),
-                        itemCount: totalSeats,
-                        itemBuilder: (ctx, i) {
-                          final num = i + 1;
-                          final seat = _getSeatInfo(num);
-                          final stLower = seat.status.toLowerCase();
-                          final isOccupied = stLower.contains('occupied');
-                          final isReserved = stLower.contains('reserved');
-                          final isAvailable = !isOccupied && !isReserved;
-
-                          if (_seatFilter == 'occupied' && !isOccupied) return const SizedBox();
-                          if (_seatFilter == 'reserved' && !isReserved) return const SizedBox();
-                          if (_seatFilter == 'available' && !isAvailable) return const SizedBox();
-
-                          final isSelected = _selectedSeat == num;
-
-                          Color bg = isOccupied
-                              ? AppColors.indigo950
-                              : isReserved
-                                  ? AppColors.orange100
-                                  : AppColors.slate100;
-                          Color txt = isOccupied
-                              ? Colors.white
-                              : isReserved
-                                  ? AppColors.orange600
-                                  : AppColors.slate500;
-
-                          return InkWell(
-                            borderRadius: BorderRadius.circular(10),
-                            onTap: () => setState(() => _selectedSeat = num),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: bg,
-                                borderRadius: BorderRadius.circular(10),
-                                border: isSelected
-                                    ? Border.all(color: AppColors.orange500, width: 2.5)
-                                    : null,
-                              ),
-                              alignment: Alignment.center,
-                              child: Text(
-                                '$num',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w900,
-                                  color: txt,
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-              ),
-              const SizedBox(height: 18),
-
-              // Selected Seat Inspector Card
-              Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: AppColors.indigo50.withOpacity(0.6),
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: AppColors.indigo100),
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          padding: const EdgeInsets.all(16),
+          child: _loadingFloorMap
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(32),
+                    child: CircularProgressIndicator(color: AppColors.orange500),
+                  ),
+                )
+              : _seatsListView
+                  // ==========================================
+                  // REQUESTED LIST LAYOUT:
+                  // Left side Seat No & Right side Allotted To
+                  // (e.g. "1 vishal kr", "2 is not alloted 2 -")
+                  // ==========================================
+                  ? Column(
                       children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: AppColors.orange500,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Text(
-                                'Seat #$_selectedSeat',
-                                style: const TextStyle(
+                        if (filteredSeats.isEmpty)
+                          Container(
+                            padding: const EdgeInsets.all(32),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: AppColors.slate200),
+                            ),
+                            alignment: Alignment.center,
+                            child: const Column(
+                              children: [
+                                Icon(Icons.search_off_rounded, size: 40, color: AppColors.slate400),
+                                SizedBox(height: 10),
+                                Text(
+                                  'No seats found',
+                                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.slate800),
+                                ),
+                                SizedBox(height: 4),
+                                Text(
+                                  'Try selecting a different filter or clearing search.',
+                                  style: TextStyle(fontSize: 12, color: AppColors.slate500),
+                                ),
+                              ],
+                            ),
+                          )
+                        else
+                          ...filteredSeats.map((seatNum) {
+                            final seat = _getSeatInfo(seatNum);
+                            final stLower = seat.status.toLowerCase();
+                            final isOccupied = stLower.contains('occupied');
+                            final isReserved = stLower.contains('reserved');
+
+                            final member = _getMemberForSeat(seatNum);
+
+                            String studentName = '—';
+                            if (isOccupied) {
+                              if (member != null && member.name.isNotEmpty) {
+                                studentName = member.name;
+                              } else if (seat.student.isNotEmpty &&
+                                  seat.student != 'Available Desk' &&
+                                  !seat.student.startsWith('Desk #')) {
+                                studentName = seat.student;
+                              } else {
+                                studentName = 'Occupied Desk';
+                              }
+                            } else if (isReserved) {
+                              studentName = 'Reserved';
+                            } else {
+                              studentName = '—'; // User requested: "2 is not alloted 2 - , like this"
+                            }
+
+                            final planName = member?.plan ?? (seat.plan != 'Open for Admission' ? seat.plan : '');
+                            final shiftTiming = member?.shiftTiming ??
+                                (seat.shiftTiming != null && seat.shiftTiming != 'Available all shifts' ? seat.shiftTiming! : '');
+
+                            return InkWell(
+                              onTap: () {
+                                _openSeatDetailModal(seatNum, seat, isOccupied, isReserved, studentName, member);
+                              },
+                              borderRadius: BorderRadius.circular(16),
+                              child: Container(
+                                margin: const EdgeInsets.only(bottom: 10),
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+                                decoration: BoxDecoration(
                                   color: Colors.white,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w900,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: isOccupied
+                                        ? AppColors.indigo200
+                                        : isReserved
+                                            ? AppColors.orange200
+                                            : AppColors.slate200,
+                                    width: isOccupied ? 1.5 : 1,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: AppColors.slate900.withValues(alpha: 0.03),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  children: [
+                                    // Left Side: Seat Number
+                                    Container(
+                                      width: 48,
+                                      height: 48,
+                                      decoration: BoxDecoration(
+                                        color: isOccupied
+                                            ? AppColors.indigo950
+                                            : isReserved
+                                                ? AppColors.orange100
+                                                : AppColors.slate100,
+                                        borderRadius: BorderRadius.circular(14),
+                                        border: Border.all(
+                                          color: isOccupied
+                                              ? AppColors.indigo900
+                                              : isReserved
+                                                  ? AppColors.orange300
+                                                  : AppColors.slate200,
+                                        ),
+                                      ),
+                                      alignment: Alignment.center,
+                                      child: Column(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Icon(
+                                            Icons.chair_rounded,
+                                            size: 14,
+                                            color: isOccupied
+                                                ? Colors.white70
+                                                : isReserved
+                                                    ? AppColors.orange600
+                                                    : AppColors.slate400,
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            '$seatNum',
+                                            style: TextStyle(
+                                              fontSize: 13.5,
+                                              fontWeight: FontWeight.w900,
+                                              color: isOccupied
+                                                  ? Colors.white
+                                                  : isReserved
+                                                      ? AppColors.orange700
+                                                      : AppColors.slate700,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+
+                                    const SizedBox(width: 14),
+
+                                    // Right Side: Allotted To & Status
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Row(
+                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  isOccupied ? studentName : '—',
+                                                  style: TextStyle(
+                                                    fontSize: 15,
+                                                    fontWeight: FontWeight.w900,
+                                                    color: isOccupied ? AppColors.slate900 : AppColors.slate400,
+                                                  ),
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              // Status Pill
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                                decoration: BoxDecoration(
+                                                  color: isOccupied
+                                                      ? AppColors.indigo50
+                                                      : isReserved
+                                                          ? AppColors.orange50
+                                                          : AppColors.emerald50,
+                                                  borderRadius: BorderRadius.circular(8),
+                                                  border: Border.all(
+                                                    color: isOccupied
+                                                        ? AppColors.indigo200
+                                                        : isReserved
+                                                            ? AppColors.orange200
+                                                            : AppColors.emerald200,
+                                                  ),
+                                                ),
+                                                child: Text(
+                                                  isOccupied
+                                                      ? 'Occupied'
+                                                      : isReserved
+                                                          ? 'Reserved'
+                                                          : 'Available',
+                                                  style: TextStyle(
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.w900,
+                                                    color: isOccupied
+                                                        ? AppColors.indigo950
+                                                        : isReserved
+                                                            ? AppColors.orange700
+                                                            : AppColors.emerald700,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 3),
+                                          if (isOccupied) ...[
+                                            Row(
+                                              children: [
+                                                if (shiftTiming.isNotEmpty) ...[
+                                                  const Icon(Icons.access_time_rounded, size: 11, color: AppColors.orange500),
+                                                  const SizedBox(width: 4),
+                                                  Text(
+                                                    shiftTiming,
+                                                    style: const TextStyle(
+                                                      fontSize: 11,
+                                                      fontWeight: FontWeight.w700,
+                                                      color: AppColors.orange600,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                ],
+                                                if (planName.isNotEmpty) ...[
+                                                  Flexible(
+                                                    child: Text(
+                                                      planName,
+                                                      style: const TextStyle(
+                                                        fontSize: 11,
+                                                        fontWeight: FontWeight.w500,
+                                                        color: AppColors.slate500,
+                                                      ),
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ],
+                                            ),
+                                          ] else ...[
+                                            Text(
+                                              isReserved
+                                                  ? 'Admission pending'
+                                                  : 'Not allotted · Ready to assign',
+                                              style: const TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w500,
+                                                color: AppColors.slate400,
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
+
+                                    const SizedBox(width: 8),
+                                    Icon(
+                                      Icons.chevron_right_rounded,
+                                      size: 18,
+                                      color: isOccupied ? AppColors.indigo950 : AppColors.slate300,
+                                    ),
+                                  ],
                                 ),
                               ),
+                            );
+                          }),
+                      ],
+                    )
+                  // Grid View fallback
+                  : Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(color: AppColors.slate200),
+                          ),
+                          child: GridView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 6,
+                              mainAxisSpacing: 8,
+                              crossAxisSpacing: 8,
                             ),
-                            const SizedBox(width: 8),
-                            Text(
-                              seatData.status,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w900,
-                                color: AppColors.indigo950,
-                              ),
-                            ),
-                          ],
+                            itemCount: totalSeats,
+                            itemBuilder: (ctx, i) {
+                              final num = i + 1;
+                              final seat = _getSeatInfo(num);
+                              final stLower = seat.status.toLowerCase();
+                              final isOccupied = stLower.contains('occupied');
+                              final isReserved = stLower.contains('reserved');
+                              final isAvailable = !isOccupied && !isReserved;
+
+                              if (_seatFilter == 'occupied' && !isOccupied) return const SizedBox();
+                              if (_seatFilter == 'reserved' && !isReserved) return const SizedBox();
+                              if (_seatFilter == 'available' && !isAvailable) return const SizedBox();
+
+                              final isSelected = _selectedSeat == num;
+
+                              Color bg = isOccupied
+                                  ? AppColors.indigo950
+                                  : isReserved
+                                      ? AppColors.orange100
+                                      : AppColors.slate100;
+                              Color txt = isOccupied
+                                  ? Colors.white
+                                  : isReserved
+                                      ? AppColors.orange600
+                                      : AppColors.slate500;
+
+                              return InkWell(
+                                borderRadius: BorderRadius.circular(10),
+                                onTap: () => setState(() => _selectedSeat = num),
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: bg,
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: isSelected ? Border.all(color: AppColors.orange500, width: 2.5) : null,
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: Text(
+                                    '$num',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w900,
+                                      color: txt,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
                         ),
-                        Text(
-                          seatData.time,
-                          style: const TextStyle(fontSize: 10, color: AppColors.slate500),
+                        const SizedBox(height: 18),
+
+                        // Selected Seat Inspector Card
+                        Container(
+                          padding: const EdgeInsets.all(18),
+                          decoration: BoxDecoration(
+                            color: AppColors.indigo50.withValues(alpha: 0.6),
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(color: AppColors.indigo100),
+                          ),
+                          child: Column(
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.orange500,
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        child: Text(
+                                          'Seat #$_selectedSeat',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        seatData.status,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w900,
+                                          color: AppColors.indigo950,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  Text(
+                                    seatData.time,
+                                    style: const TextStyle(fontSize: 10, color: AppColors.slate500),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 14),
+                              _buildSeatRow('Student Name', seatData.student),
+                              _buildSeatRow('Membership Plan', seatData.plan),
+                              if (seatData.shiftTiming != null && seatData.shiftTiming!.isNotEmpty)
+                                _buildSeatRow('Shift Timing', seatData.shiftTiming!),
+                              _buildSeatRow('Validity', seatData.validTill, isGreen: true),
+                            ],
+                          ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 14),
-                    _buildSeatRow('Student Name', seatData.student),
-                    _buildSeatRow('Membership Plan', seatData.plan),
-                    if (seatData.shiftTiming != null && seatData.shiftTiming!.isNotEmpty)
-                      _buildSeatRow('Shift Timing', seatData.shiftTiming!),
-                    _buildSeatRow('Validity', seatData.validTill, isGreen: true),
+        ),
+      ],
+    );
+  }
+
+  void _openSeatDetailModal(
+    int seatNum,
+    SeatInfo seatData,
+    bool isOccupied,
+    bool isReserved,
+    String studentName,
+    MemberInfo? member,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(22),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.slate300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: isOccupied ? AppColors.indigo950 : AppColors.slate100,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        'Seat #$seatNum',
+                        style: TextStyle(
+                          color: isOccupied ? Colors.white : AppColors.slate800,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: isOccupied
+                            ? AppColors.indigo50
+                            : (isReserved ? AppColors.orange50 : AppColors.emerald50),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: isOccupied
+                              ? AppColors.indigo200
+                              : (isReserved ? AppColors.orange200 : AppColors.emerald200),
+                        ),
+                      ),
+                      child: Text(
+                        isOccupied ? 'Occupied' : (isReserved ? 'Reserved' : 'Available'),
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w900,
+                          color: isOccupied
+                              ? AppColors.indigo950
+                              : (isReserved ? AppColors.orange700 : AppColors.emerald700),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            if (isOccupied) ...[
+              _buildSeatRow('Allotted Student', studentName),
+              if (member != null && member.phone.isNotEmpty)
+                _buildSeatRow('Mobile Number', member.phone),
+              _buildSeatRow('Membership Plan', member?.plan ?? seatData.plan),
+              if ((seatData.shiftTiming != null && seatData.shiftTiming!.isNotEmpty) ||
+                  (member?.shiftTiming != null && member!.shiftTiming!.isNotEmpty))
+                _buildSeatRow('Shift Timing', member?.shiftTiming ?? seatData.shiftTiming ?? 'N/A'),
+              _buildSeatRow('Validity', seatData.validTill, isGreen: true),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  if (member != null) ...[
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _openReallotSeatModal(member);
+                        },
+                        icon: const Icon(Icons.chair_alt_rounded, size: 14),
+                        label: const Text('Re-allot Seat', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.orange600,
+                          side: const BorderSide(color: AppColors.orange300),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _openMemberProfileModal(member);
+                        },
+                        icon: const Icon(Icons.person_outline_rounded, size: 14),
+                        label: const Text('Profile', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.indigo950,
+                          side: const BorderSide(color: AppColors.indigo200),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ] else ...[
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.slate50,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.slate200),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.check_circle_outline_rounded, color: AppColors.emerald600, size: 24),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Seat #$seatNum is Vacant',
+                              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: AppColors.slate900)),
+                          const SizedBox(height: 2),
+                          const Text('This desk is open and ready to be allotted to a student.',
+                              style: TextStyle(fontSize: 11, color: AppColors.slate600)),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _openAddMemberModal();
+                  },
+                  icon: const Icon(Icons.person_add_rounded, size: 16, color: Colors.white),
+                  label: const Text('Allot this Seat to a Student',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.white)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.orange500,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                  ),
+                ),
+              ),
             ],
-          ),
+            const SizedBox(height: 12),
+          ],
         ),
-      ],
+      ),
     );
   }
 
@@ -1175,19 +1758,37 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                       color: Colors.white,
                     ),
                   ),
-                  ElevatedButton.icon(
-                    onPressed: () => _openAddMemberModal(),
-                    icon: const Icon(Icons.add, size: 14, color: Colors.white),
-                    label: const Text(
-                      'Add',
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 11),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.orange500,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                      elevation: 0,
-                    ),
+                  Row(
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: () => _openStandeeQRModal(),
+                        icon: const Icon(Icons.qr_code_2_rounded, size: 14, color: Colors.white),
+                        label: const Text(
+                          'Gate QR',
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 11),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: Colors.white38),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton.icon(
+                        onPressed: () => _openAddMemberModal(),
+                        icon: const Icon(Icons.add, size: 14, color: Colors.white),
+                        label: const Text(
+                          'Add',
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 11),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.orange500,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          elevation: 0,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -1215,6 +1816,74 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                   ),
                 ),
               ),
+              const SizedBox(height: 14),
+
+              // Sub-tab switcher: Active Members vs Removed / Ex-Members
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        onTap: () => setState(() => _membersSubTab = 'active'),
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 9),
+                          decoration: BoxDecoration(
+                            color: _membersSubTab == 'active' ? Colors.white : Colors.transparent,
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: _membersSubTab == 'active'
+                                ? [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 4, offset: const Offset(0, 2))]
+                                : null,
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            'Active Members (${_members.length})',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: _membersSubTab == 'active' ? AppColors.indigo950 : Colors.white70,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: InkWell(
+                        onTap: () {
+                          setState(() => _membersSubTab = 'removed');
+                          _loadRemovedMembers();
+                        },
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 9),
+                          decoration: BoxDecoration(
+                            color: _membersSubTab == 'removed' ? Colors.white : Colors.transparent,
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: _membersSubTab == 'removed'
+                                ? [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 4, offset: const Offset(0, 2))]
+                                : null,
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            'Removed Members (${_removedMembers.length})',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: _membersSubTab == 'removed' ? AppColors.indigo950 : Colors.white70,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -1223,8 +1892,11 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
           padding: const EdgeInsets.all(20),
           child: Column(
             children: [
-              // Pending Admission Requests Section
-              if (_pendingRequests.isNotEmpty)
+              if (_membersSubTab == 'removed')
+                _buildRemovedMembersList()
+              else ...[
+                // Pending Admission Requests Section
+                if (_pendingRequests.isNotEmpty)
                 Container(
                   margin: const EdgeInsets.only(bottom: 16),
                   padding: const EdgeInsets.all(16),
@@ -1383,25 +2055,38 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
               // Members List
               else
                 ...filtered.map((m) {
+                  final isActive = m.membershipStatus.toUpperCase() == 'ACTIVE';
+                  final isPresent = m.status.toLowerCase().contains('present');
+
                   return Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.all(14),
+                    margin: const EdgeInsets.only(bottom: 14),
+                    padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(color: AppColors.slate200),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.slate900.withValues(alpha: 0.04),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
                     ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        // Row 1: Avatar + Name & Phone + Status Badge & Punch Indicator
                         Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             Container(
-                              width: 42,
-                              height: 42,
+                              width: 44,
+                              height: 44,
                               decoration: BoxDecoration(
                                 color: AppColors.indigo50,
                                 borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: AppColors.indigo100),
                               ),
                               alignment: Alignment.center,
                               child: Text(
@@ -1409,124 +2094,286 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                                     ? m.name.substring(0, m.name.length >= 2 ? 2 : 1).toUpperCase()
                                     : 'M',
                                 style: const TextStyle(
-                                  fontSize: 14,
+                                  fontSize: 15,
                                   fontWeight: FontWeight.w900,
                                   color: AppColors.indigo950,
                                 ),
                               ),
                             ),
                             const SizedBox(width: 12),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  m.name,
-                                  style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w900,
-                                    color: AppColors.slate900,
-                                  ),
-                                ),
-                                Text(
-                                  '${m.seat} · ${m.plan}',
-                                  style: const TextStyle(fontSize: 10.5, color: AppColors.slate600),
-                                ),
-                                if (m.shiftTiming != null && m.shiftTiming!.isNotEmpty)
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
                                   Text(
-                                    'Timing: ${m.shiftTiming}',
+                                    m.name,
                                     style: const TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w700,
-                                      color: AppColors.primary,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w900,
+                                      color: AppColors.slate900,
                                     ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                Text(
-                                  m.phone,
-                                  style: const TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppColors.slate400,
+                                  const SizedBox(height: 2),
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.phone_rounded, size: 11, color: AppColors.slate400),
+                                      const SizedBox(width: 4),
+                                      Expanded(
+                                        child: Text(
+                                          m.phone,
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                            color: AppColors.slate500,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ],
-                        ),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // Status & Attendance Column
+                            const SizedBox(width: 8),
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
-                                // Enrollment Status Badge
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                   decoration: BoxDecoration(
-                                    color: (m.membershipStatus.toUpperCase() == 'ACTIVE') ? AppColors.emerald50 : AppColors.slate100,
+                                    color: isActive ? AppColors.emerald50 : AppColors.slate100,
                                     borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(color: (m.membershipStatus.toUpperCase() == 'ACTIVE') ? AppColors.emerald200 : AppColors.slate200),
+                                    border: Border.all(color: isActive ? AppColors.emerald200 : AppColors.slate200),
                                   ),
                                   child: Text(
-                                    (m.membershipStatus.toUpperCase() == 'ACTIVE') ? 'Active' : 'Inactive',
+                                    isActive ? 'Active' : 'Inactive',
                                     style: TextStyle(
                                       fontSize: 10,
                                       fontWeight: FontWeight.w900,
-                                      color: (m.membershipStatus.toUpperCase() == 'ACTIVE') ? AppColors.emerald700 : AppColors.slate600,
+                                      color: isActive ? AppColors.emerald700 : AppColors.slate600,
                                     ),
                                   ),
                                 ),
-                                const SizedBox(height: 3),
-                                // Punch status
+                                const SizedBox(height: 4),
                                 Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Icon(
-                                      m.status.toLowerCase().contains('present') ? Icons.circle : Icons.circle_outlined,
+                                      isPresent ? Icons.circle : Icons.circle_outlined,
                                       size: 7,
-                                      color: m.status.toLowerCase().contains('present') ? AppColors.emerald600 : AppColors.slate400,
+                                      color: isPresent ? AppColors.emerald600 : AppColors.slate400,
                                     ),
-                                    const SizedBox(width: 3),
+                                    const SizedBox(width: 4),
                                     Text(
-                                      m.status.toLowerCase().contains('present')
+                                      isPresent
                                           ? (m.checkInTime != null ? 'In: ${m.checkInTime}' : 'Present')
                                           : m.status,
                                       style: TextStyle(
                                         fontSize: 9.5,
                                         fontWeight: FontWeight.w600,
-                                        color: m.status.toLowerCase().contains('present') ? AppColors.emerald700 : AppColors.slate500,
+                                        color: isPresent ? AppColors.emerald700 : AppColors.slate500,
                                       ),
                                     ),
                                   ],
                                 ),
                               ],
                             ),
-                            const SizedBox(width: 8),
+                          ],
+                        ),
 
-                            // Direct Profile Button
-                            InkWell(
-                              onTap: m.studentId != null ? () => _openMemberProfileModal(m) : null,
-                              borderRadius: BorderRadius.circular(8),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+                        const SizedBox(height: 12),
+
+                        // Row 2: Informational Chips (Seat, Plan, Shift)
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 6,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: AppColors.indigo50,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: AppColors.indigo200.withValues(alpha: 0.5)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.chair_rounded, size: 12, color: AppColors.indigo950),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    m.seat,
+                                    style: const TextStyle(
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w800,
+                                      color: AppColors.indigo950,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: AppColors.slate100,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: AppColors.slate200),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.card_membership_rounded, size: 12, color: AppColors.slate700),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    m.plan,
+                                    style: const TextStyle(
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.slate700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (m.shiftTiming != null && m.shiftTiming!.isNotEmpty)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: AppColors.indigo50,
+                                  color: AppColors.orange50,
                                   borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: AppColors.orange200),
                                 ),
-                                child: const Row(
+                                child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(Icons.visibility_outlined, size: 12, color: AppColors.indigo950),
-                                    SizedBox(width: 3),
-                                    Text('Profile', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.indigo950)),
+                                    const Icon(Icons.access_time_rounded, size: 12, color: AppColors.orange600),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      m.shiftTiming!,
+                                      style: const TextStyle(
+                                        fontSize: 10.5,
+                                        fontWeight: FontWeight.w800,
+                                        color: AppColors.orange700,
+                                      ),
+                                    ),
                                   ],
+                                ),
+                              ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 12),
+                        const Divider(height: 1, color: AppColors.slate100),
+                        const SizedBox(height: 10),
+
+                        // Row 3: Action Buttons (Profile, Seat, Remove, Menu)
+                        Row(
+                          children: [
+                            // View Profile Button
+                            Expanded(
+                              child: InkWell(
+                                onTap: m.studentId != null ? () => _openMemberProfileModal(m) : null,
+                                borderRadius: BorderRadius.circular(10),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.indigo50,
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: AppColors.indigo100),
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: const Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.visibility_outlined, size: 13, color: AppColors.indigo950),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        'Profile',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w800,
+                                          color: AppColors.indigo950,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+
+                            // Re-allot Seat Button
+                            Expanded(
+                              child: InkWell(
+                                onTap: m.studentId != null ? () => _openReallotSeatModal(m) : null,
+                                borderRadius: BorderRadius.circular(10),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.orange50,
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: AppColors.orange200),
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: const Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.chair_alt_rounded, size: 13, color: AppColors.orange600),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        'Seat',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w800,
+                                          color: AppColors.orange700,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+
+                            // Direct Remove Button
+                            Expanded(
+                              child: InkWell(
+                                onTap: m.studentId != null ? () => _confirmRemoveMember(m) : null,
+                                borderRadius: BorderRadius.circular(10),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFEF2F2), // Red 50
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: const Color(0xFFFECACA)), // Red 200
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: const Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.delete_outline_rounded, size: 13, color: Colors.red),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        'Remove',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w800,
+                                          color: Colors.red,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
 
-                            // 3-dots Menu
-                            if (m.studentId != null)
+                            // 3-dots Menu for secondary actions
+                            if (m.studentId != null) ...[
+                              const SizedBox(width: 4),
                               PopupMenuButton<String>(
+                                padding: EdgeInsets.zero,
                                 icon: const Icon(Icons.more_vert_rounded, size: 20, color: AppColors.slate600),
                                 onSelected: (action) async {
                                   if (action == 'VIEW_PROFILE') {
@@ -1535,29 +2382,31 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                                     _openReallotSeatModal(m);
                                   } else if (action == 'TOGGLE_STATUS') {
                                     _toggleMemberStatus(m);
-                                  } else if (action == 'RELEASE_SEAT' || action == 'REMOVE') {
+                                  } else if (action == 'RELEASE_SEAT') {
                                     final confirm = await showDialog<bool>(
                                       context: context,
                                       builder: (c) => AlertDialog(
-                                        title: Text(action == 'RELEASE_SEAT' ? 'Release Seat?' : 'Remove Member?'),
-                                        content: Text(action == 'RELEASE_SEAT'
-                                            ? 'Are you sure you want to release ${m.name}\'s seat? The student remains registered.'
-                                            : 'Are you sure you want to remove ${m.name} from the library?'),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                        title: const Text('Release Seat?'),
+                                        content: Text(
+                                          'Are you sure you want to release ${m.name}\'s seat? The student remains registered.',
+                                          style: const TextStyle(fontSize: 13),
+                                        ),
                                         actions: [
                                           TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
                                           TextButton(
                                             onPressed: () => Navigator.pop(c, true),
-                                            child: Text(action == 'RELEASE_SEAT' ? 'Release' : 'Remove', style: const TextStyle(color: Colors.red)),
+                                            child: const Text('Release', style: TextStyle(color: Colors.red)),
                                           ),
                                         ],
                                       ),
                                     );
                                     if (confirm == true) {
-                                      final res = await ApiService.removeMember(m.studentId!, action: action);
+                                      final res = await ApiService.removeMember(m.studentId!, action: 'RELEASE_SEAT');
                                       if (res.success) {
                                         ScaffoldMessenger.of(context).showSnackBar(
                                           SnackBar(
-                                            content: Text(res.message ?? 'Action completed successfully'),
+                                            content: Text(res.message ?? 'Seat released successfully'),
                                             backgroundColor: AppColors.emerald500,
                                           ),
                                         );
@@ -1572,26 +2421,28 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                                         );
                                       }
                                     }
+                                  } else if (action == 'REMOVE') {
+                                    _confirmRemoveMember(m);
                                   }
                                 },
-                                itemBuilder: (ctx) => [
-                                  const PopupMenuItem(
+                                itemBuilder: (c) => [
+                                  PopupMenuItem(
                                     value: 'VIEW_PROFILE',
                                     child: Row(
                                       children: [
-                                        Icon(Icons.person_outline_rounded, size: 16, color: AppColors.indigo950),
-                                        SizedBox(width: 8),
-                                        Text('View Student Profile', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                                        Icon(Icons.person_outline_rounded, size: 16, color: AppColors.primary),
+                                        const SizedBox(width: 8),
+                                        const Text('View Profile', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
                                       ],
                                     ),
                                   ),
-                                  const PopupMenuItem(
+                                  PopupMenuItem(
                                     value: 'REALLOT_SEAT',
                                     child: Row(
                                       children: [
-                                        Icon(Icons.chair_alt_rounded, size: 16, color: AppColors.orange600),
-                                        SizedBox(width: 8),
-                                        Text('Re-allot / Edit Seat', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                                        const Icon(Icons.chair_alt_rounded, size: 16, color: AppColors.orange600),
+                                        const SizedBox(width: 8),
+                                        const Text('Re-allot Seat', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
                                       ],
                                     ),
                                   ),
@@ -1599,47 +2450,332 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                                     value: 'TOGGLE_STATUS',
                                     child: Row(
                                       children: [
-                                        Icon((m.membershipStatus.toUpperCase() == 'ACTIVE') ? Icons.pause_circle_outline_rounded : Icons.play_circle_outline_rounded,
-                                            size: 16, color: (m.membershipStatus.toUpperCase() == 'ACTIVE') ? AppColors.amber700 : AppColors.emerald600),
+                                        Icon(isActive ? Icons.pause_circle_outline_rounded : Icons.play_circle_outline_rounded,
+                                            size: 16, color: isActive ? AppColors.slate600 : AppColors.emerald600),
                                         const SizedBox(width: 8),
-                                        Text((m.membershipStatus.toUpperCase() == 'ACTIVE') ? 'Make Student Inactive' : 'Make Student Active',
-                                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                                        Text(isActive ? 'Mark Inactive' : 'Mark Active',
+                                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                                      ],
+                                    ),
+                                  ),
+                                  const PopupMenuItem(
+                                    value: 'RELEASE_SEAT',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.event_seat_outlined, size: 16, color: Colors.orange),
+                                        SizedBox(width: 8),
+                                        Text('Release Seat Only', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.orange)),
                                       ],
                                     ),
                                   ),
                                   const PopupMenuDivider(),
                                   const PopupMenuItem(
-                                    value: 'RELEASE_SEAT',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.event_seat_outlined, size: 16, color: AppColors.slate600),
-                                        SizedBox(width: 8),
-                                        Text('Release Seat Only', style: TextStyle(fontSize: 12.5)),
-                                      ],
-                                    ),
-                                  ),
-                                  const PopupMenuItem(
                                     value: 'REMOVE',
                                     child: Row(
                                       children: [
-                                        Icon(Icons.person_remove_rounded, size: 16, color: Colors.red),
+                                        Icon(Icons.delete_forever_rounded, size: 16, color: Colors.red),
                                         SizedBox(width: 8),
-                                        Text('Remove from Library', style: TextStyle(fontSize: 12.5, color: Colors.red, fontWeight: FontWeight.w700)),
+                                        Text('Remove Member', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.red)),
                                       ],
                                     ),
                                   ),
                                 ],
                               ),
+                            ],
                           ],
                         ),
                       ],
                     ),
                   );
                 }),
+              ],
             ],
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildRemovedMembersList() {
+    if (_loadingRemovedMembers) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: CircularProgressIndicator(color: AppColors.orange500),
+        ),
+      );
+    }
+
+    final query = _memberSearch.trim().toLowerCase();
+    final list = _removedMembers.where((m) {
+      if (query.isEmpty) return true;
+      final name = m['studentName']?.toString().toLowerCase() ?? '';
+      final phone = m['phone']?.toString().toLowerCase() ?? '';
+      final code = m['studentCode']?.toString().toLowerCase() ?? '';
+      final seat = m['seatLabel']?.toString().toLowerCase() ?? '';
+      return name.contains(query) || phone.contains(query) || code.contains(query) || seat.contains(query);
+    }).toList();
+
+    if (list.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: AppColors.slate200),
+        ),
+        child: Column(
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: const BoxDecoration(
+                color: AppColors.slate100,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.person_off_rounded, size: 30, color: AppColors.slate500),
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'No Removed Members',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.slate900),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Students who leave or are removed from your library will appear here with enrollment join & left history.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, color: AppColors.slate500, height: 1.4),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      children: list.map((m) {
+        final name = m['studentName']?.toString() ?? 'Ex-Member';
+        final phone = m['phone']?.toString() ?? '';
+        final code = m['studentCode']?.toString() ?? '';
+        final seat = m['seatLabel']?.toString() ?? 'Seat Released';
+        final plan = m['planName']?.toString() ?? 'Monthly Plan';
+        final enrolled = m['enrolledDate']?.toString() ?? '-';
+        final left = m['leftDate']?.toString() ?? '-';
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 14),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppColors.slate200),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.slate900.withOpacity(0.04),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Row 1: Initials avatar + Name & Student Code + Removed Badge
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: AppColors.slate100,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppColors.slate300),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      name.isNotEmpty ? name.substring(0, name.length >= 2 ? 2 : 1).toUpperCase() : 'EX',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.slate700,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.slate900,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            if (code.isNotEmpty) ...[
+                              Text(
+                                code,
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.slate600),
+                              ),
+                              const Text(' · ', style: TextStyle(color: AppColors.slate400)),
+                            ],
+                            Text(
+                              phone,
+                              style: const TextStyle(fontSize: 11, color: AppColors.slate500),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF1F2), // Rose 50
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFFECDD3)), // Rose 200
+                    ),
+                    child: const Text(
+                      'Ex-Member',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFFE11D48), // Rose 600
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // Row 2: Past Plan & Seat info chips
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.slate100,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.slate200),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.chair_outlined, size: 12, color: AppColors.slate600),
+                        const SizedBox(width: 4),
+                        Text(
+                          seat,
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.slate700),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.slate100,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.slate200),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.workspace_premium_outlined, size: 12, color: AppColors.slate600),
+                        const SizedBox(width: 4),
+                        Text(
+                          plan,
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.slate700),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // Row 3: Enroll In & Enroll Out Dates (Join & Left history)
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.slate50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.slate200.withOpacity(0.6)),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(Icons.login_rounded, size: 12, color: AppColors.emerald600),
+                              SizedBox(width: 4),
+                              Text(
+                                'ENROLLED IN',
+                                style: TextStyle(
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w900,
+                                  color: AppColors.emerald700,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            enrolled,
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.slate900),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(height: 28, width: 1, color: AppColors.slate200),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(Icons.logout_rounded, size: 12, color: Color(0xFFE11D48)),
+                              SizedBox(width: 4),
+                              Text(
+                                'LEFT LIBRARY',
+                                style: TextStyle(
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w900,
+                                  color: Color(0xFFE11D48),
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            left,
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.slate900),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
     );
   }
 
@@ -1652,45 +2788,74 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
       children: [
         Container(
           width: double.infinity,
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Color(0xFF090D1A), // Deep midnight black
-                Color(0xFF0F172A), // Dark slate
-                Color(0xFF1E1B4B), // Deep indigo
+                Color(0xFF0F172A), // Slate 900
+                Color(0xFF1E1B4B), // Deep Indigo 950
+                Color(0xFF1E3A8A), // Sapphire Blue 900
               ],
             ),
+            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(28)),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF0F172A).withValues(alpha: 0.35),
+                blurRadius: 18,
+                offset: const Offset(0, 6),
+              ),
+            ],
           ),
           clipBehavior: Clip.antiAlias,
           child: Stack(
             children: [
-              // JodoLibrary Branded Background Banner Watermark in Top Back of Owner Profile
+              // Modern glowing luminous accents
               Positioned(
-                right: -20,
-                top: -8,
-                bottom: -8,
-                child: Opacity(
-                  opacity: 0.18,
-                  child: Image.asset(
-                    'assets/images/logo_transparent.png',
-                    fit: BoxFit.contain,
-                    height: 105,
+                right: -40,
+                top: -30,
+                child: Container(
+                  width: 160,
+                  height: 160,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        AppColors.orange500.withValues(alpha: 0.18),
+                        Colors.transparent,
+                      ],
+                    ),
                   ),
                 ),
               ),
-              // Subtle Banner Brand Badge on Top Right
+              Positioned(
+                left: -30,
+                bottom: -40,
+                child: Container(
+                  width: 140,
+                  height: 140,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        AppColors.primary.withValues(alpha: 0.25),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              // Subtle Partner Badge on Top Right
               Positioned(
                 top: 14,
                 right: 18,
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.08),
+                    color: Colors.white.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.15),
+                      color: Colors.white.withValues(alpha: 0.2),
                       width: 1,
                     ),
                   ),
@@ -1704,7 +2869,7 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                         style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w700,
-                          color: Colors.white70,
+                          color: Colors.white,
                           letterSpacing: 0.3,
                         ),
                       ),
@@ -1714,19 +2879,21 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
               ),
               // Main Owner Profile Row Content
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 24, 20, 22),
+                padding: const EdgeInsets.fromLTRB(20, 26, 20, 22),
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Container(
-                      width: 60,
-                      height: 60,
+                      width: 62,
+                      height: 62,
                       decoration: BoxDecoration(
                         color: AppColors.orange500,
-                        borderRadius: BorderRadius.circular(20),
+                        borderRadius: BorderRadius.circular(22),
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.25), width: 2),
                         boxShadow: [
                           BoxShadow(
-                            color: AppColors.orange500.withValues(alpha: 0.3),
-                            blurRadius: 10,
+                            color: AppColors.orange500.withValues(alpha: 0.35),
+                            blurRadius: 12,
                             offset: const Offset(0, 4),
                           ),
                         ],
@@ -1737,8 +2904,8 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                           ? Image.network(
                               _ownerPhotoUrl!,
                               fit: BoxFit.cover,
-                              width: 60,
-                              height: 60,
+                              width: 62,
+                              height: 62,
                               errorBuilder: (_, __, ___) => Text(
                                 _getInitials(_ownerName),
                                 style: const TextStyle(
@@ -1761,6 +2928,7 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
                             _ownerName,
@@ -1768,40 +2936,54 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                               fontSize: 20,
                               fontWeight: FontWeight.w900,
                               color: Colors.white,
+                              letterSpacing: -0.3,
                             ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(height: 2),
-                          const Text(
-                            'Library Owner',
-                            style: TextStyle(fontSize: 12, color: AppColors.indigo200),
+                          const SizedBox(height: 3),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text(
+                              'Library Owner',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.indigo200,
+                                letterSpacing: 0.2,
+                              ),
+                            ),
                           ),
                         ],
                       ),
                     ),
                     InkWell(
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(20),
                       onTap: _showEditOwnerProfileDialog,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        width: 40,
+                        height: 40,
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.edit_rounded, color: Colors.white, size: 16),
-                            SizedBox(width: 4),
-                            Text(
-                              'Edit',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w800,
-                              ),
+                          color: Colors.white.withValues(alpha: 0.18),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1.2),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.2),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
                             ),
                           ],
+                        ),
+                        alignment: Alignment.center,
+                        child: const Icon(
+                          Icons.edit_rounded,
+                          color: Colors.white,
+                          size: 19,
                         ),
                       ),
                     ),
@@ -2314,20 +3496,34 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
   }
 
   void _openStudentPreview() {
-    final profile = _businessProfile ??
-        LibraryBusinessModel(
-          id: 'owner-lib',
-          name: _libraryName,
-          address: _address,
-          city: _city,
-          totalSeats: _totalSeats,
-          contactPhone: _ownerPhone,
-        );
+    final profile = (_businessProfile != null)
+        ? _businessProfile!.copyWith(
+            totalSeats: _totalSeats,
+            name: _libraryName,
+            address: _address,
+            city: _city,
+            contactPhone: _ownerPhone,
+          )
+        : LibraryBusinessModel(
+            id: 'owner-lib',
+            name: _libraryName,
+            address: _address,
+            city: _city,
+            totalSeats: _totalSeats,
+            contactPhone: _ownerPhone,
+          );
+
+    final String libId = (_businessProfile?.id != null &&
+            _businessProfile!.id.isNotEmpty &&
+            _businessProfile!.id != 'owner-lib')
+        ? _businessProfile!.id
+        : '';
 
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => LibraryDetailsScreen(
+          libraryId: libId.isNotEmpty ? libId : null,
           initialData: profile,
           isOwnerPreview: true,
         ),
@@ -2981,7 +4177,16 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
   // ==========================================
   // OWNER MODALS
   // ==========================================
-  void _openStandeeQRModal() {
+  Future<void> _openStandeeQRModal() async {
+    String payload = _businessProfile?.qrPayload ?? '';
+    if (payload.isEmpty) {
+      final res = await ApiService.getStandeeQr();
+      if (res.success && res.data != null && mounted) {
+        payload = res.data!['qrPayload']?.toString() ?? '';
+      }
+    }
+    if (!mounted) return;
+
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
@@ -3022,25 +4227,49 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
-              const QRCodeGraphic(size: 180),
+              const SizedBox(height: 18),
+              QRCodeGraphic(size: 190, data: payload.isNotEmpty ? payload : null),
               const SizedBox(height: 16),
-              const Text(
-                'Achievers Study Hub - Gate 1',
-                style: TextStyle(
-                  fontSize: 14,
+              Text(
+                _businessProfile?.displayName ?? 'Study Hub Library',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 15,
                   fontWeight: FontWeight.w900,
                   color: AppColors.slate900,
                 ),
               ),
-              const SizedBox(height: 2),
-              const Text(
-                'Display this standee at library entrance desk.',
-                style: TextStyle(fontSize: 11, color: AppColors.slate500),
+              const SizedBox(height: 4),
+              Text(
+                _businessProfile?.address != null && _businessProfile!.address.isNotEmpty
+                    ? _businessProfile!.address
+                    : 'Show this QR to students for Attendance Check-in & Punch-out.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 11, color: AppColors.slate500),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: AppColors.emerald50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.emerald200),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.check_circle_rounded, size: 13, color: AppColors.emerald600),
+                    SizedBox(width: 5),
+                    Text(
+                      'Ready for Student Check-in / Punch-out Scan',
+                      style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: AppColors.emerald700),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 20),
               CustomButton(
-                label: 'Done / Close',
+                label: 'Close Standee',
                 onPressed: () => Navigator.of(ctx).pop(),
               ),
             ],
@@ -3160,6 +4389,68 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
     );
   }
 
+  Future<void> _confirmRemoveMember(MemberInfo m) async {
+    if (m.studentId == null) return;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.red),
+            SizedBox(width: 8),
+            Text('Remove Member?'),
+          ],
+        ),
+        content: Text(
+          'Are you sure you want to remove ${m.name} from the library?\n\nThis will vacate their allotted seat (${m.seat}) and cancel their active membership and booking.',
+          style: const TextStyle(fontSize: 13, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(c, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('Remove Member', style: TextStyle(fontWeight: FontWeight.w800)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      final res = await ApiService.removeMember(m.studentId!, action: 'REMOVE');
+      if (res.success) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(res.message ?? 'Member removed and seat vacated successfully'),
+              backgroundColor: AppColors.emerald500,
+            ),
+          );
+        }
+        _loadMembersData();
+        _loadFloorMapData();
+        _loadProfileData();
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(res.message ?? 'Failed to remove member'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
   void _openMemberProfileModal(MemberInfo m) {
     if (m.studentId == null) return;
     showDialog(
@@ -3190,6 +4481,14 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
           final seat = data?['seat']?.toString() ?? m.seat;
           final shift = data?['shiftTiming']?.toString() ?? m.shiftTiming ?? 'N/A';
           final plan = data?['planName']?.toString() ?? m.plan;
+          final monthlyFee = data?['monthlyFee'];
+          String planDisplay = plan;
+          if (monthlyFee != null) {
+            final feeNum = num.tryParse(monthlyFee.toString());
+            if (feeNum != null) {
+              planDisplay = '$plan · ₹${feeNum.toInt()}/mo';
+            }
+          }
           final validTill = data?['validTill']?.toString() ?? 'N/A';
           final gender = data?['gender']?.toString() ?? 'N/A';
           final exam = data?['examCategory']?.toString() ?? 'N/A';
@@ -3261,7 +4560,9 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                   const SizedBox(height: 14),
                   _buildProfileField('Assigned Desk', seat),
                   _buildProfileField('Shift Timing', shift),
-                  _buildProfileField('Subscription Plan', plan),
+                  _buildProfileField('Subscription Plan', planDisplay),
+                  if (monthlyFee != null)
+                    _buildProfileField('Monthly Fee', '₹${num.tryParse(monthlyFee.toString())?.toInt() ?? monthlyFee} / month'),
                   _buildProfileField('Valid Till', validTill),
                   _buildProfileField('Target Exam', exam),
                   _buildProfileField('Gender', gender),
@@ -3280,6 +4581,22 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                           style: OutlinedButton.styleFrom(
                             foregroundColor: AppColors.orange600,
                             side: const BorderSide(color: AppColors.orange300),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            _confirmRemoveMember(m);
+                          },
+                          icon: const Icon(Icons.delete_outline_rounded, size: 14),
+                          label: const Text('Remove', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.red,
+                            side: const BorderSide(color: Color(0xFFFECACA)),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
                         ),
