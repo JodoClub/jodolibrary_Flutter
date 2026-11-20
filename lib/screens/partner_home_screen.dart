@@ -59,12 +59,51 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
   int _occupiedSeatsCount = 0;
   int _reservedSeatsCount = 0;
 
+  // Fee Collections & Payment Tracking State
+  List<FeeCollectionItem> _feeCollections = [];
+  num _totalCollectedAmount = 0;
+  num _todayCollectedAmount = 0;
+  num _thisMonthCollectedAmount = 0;
+  int _renewalsDueCount = 0;
+  bool _loadingCollections = false;
+  String _memberValidityFilter = 'all'; // 'all', 'due_soon', 'active'
+
   @override
   void initState() {
     super.initState();
     _loadProfileData();
     _loadMembersData();
+    _loadCollectionsData();
     _loadFloorMapData();
+  }
+
+  Future<void> _loadCollectionsData() async {
+    if (!mounted) return;
+    setState(() => _loadingCollections = true);
+    try {
+      final res = await ApiService.getOwnerCollections();
+      if (res.success && res.data != null && mounted) {
+        final d = res.data!;
+        final itemsList = (d['items'] as List?) ?? [];
+        setState(() {
+          _feeCollections = itemsList
+              .map((item) => FeeCollectionItem.fromJson(item as Map<String, dynamic>))
+              .toList();
+          _totalCollectedAmount = d['totalCollected'] != null
+              ? num.tryParse(d['totalCollected'].toString()) ?? 0
+              : 0;
+          _todayCollectedAmount = d['todayCollected'] != null
+              ? num.tryParse(d['todayCollected'].toString()) ?? 0
+              : 0;
+          _thisMonthCollectedAmount = d['thisMonthCollected'] != null
+              ? num.tryParse(d['thisMonthCollected'].toString()) ?? 0
+              : 0;
+        });
+      }
+    } catch (_) {}
+    if (mounted) {
+      setState(() => _loadingCollections = false);
+    }
   }
 
   Future<void> _loadMembersData() async {
@@ -76,7 +115,9 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
         final list = (res.data!['members'] as List?) ?? [];
         setState(() {
           _members = list.map((m) => MemberInfo.fromJson(m as Map<String, dynamic>)).toList();
+          _renewalsDueCount = _members.where((m) => m.isDueSoon).length;
         });
+        _loadCollectionsData();
       }
     } catch (_) {}
 
@@ -491,21 +532,11 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                       onTap: () => _openAddMemberModal(),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: _buildOwnerAction(
-                      icon: Icons.camera_alt,
-                      label: 'Scan Pass',
-                      bg: AppColors.indigo50,
-                      color: AppColors.indigo950,
-                      onTap: () => _openDeskScannerModal(),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _buildOwnerAction(
-                      icon: Icons.qr_code,
-                      label: 'Standee QR',
+                      icon: Icons.qr_code_2_rounded,
+                      label: 'Attendance QR',
                       bg: AppColors.emerald50,
                       color: AppColors.emerald600,
                       onTap: () => _openStandeeQRModal(),
@@ -564,26 +595,38 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                           Expanded(
                             child: _buildOwnerStatCard(
                               icon: Icons.account_balance_wallet,
-                              tag: '₹2.18L mo',
-                              tagColor: AppColors.indigo800,
-                              tagBg: AppColors.indigo50,
-                              label: 'TODAY COLLECTION',
-                              val: '₹18,400',
+                              tag: _todayCollectedAmount > 0
+                                  ? '₹${_todayCollectedAmount.toInt()} today'
+                                  : '₹${_thisMonthCollectedAmount.toInt()} this month',
+                              tagColor: AppColors.emerald700,
+                              tagBg: AppColors.emerald50,
+                              label: 'TOTAL COLLECTION',
+                              val: '₹${_totalCollectedAmount.toInt()}',
                               iconBg: AppColors.emerald50,
                               iconColor: AppColors.emerald600,
                             ),
                           ),
                           const SizedBox(width: 10),
                           Expanded(
-                            child: _buildOwnerStatCard(
-                              icon: Icons.event,
-                              tag: '7 Days',
-                              tagColor: AppColors.rose600,
-                              tagBg: AppColors.rose50,
-                              label: 'RENEWALS DUE',
-                              val: '18',
-                              iconBg: AppColors.rose50,
-                              iconColor: AppColors.rose600,
+                            child: InkWell(
+                              onTap: () {
+                                setState(() {
+                                  _activeTab = PartnerTab.members;
+                                  _membersSubTab = 'active';
+                                  _memberValidityFilter = 'due_soon';
+                                });
+                              },
+                              borderRadius: BorderRadius.circular(20),
+                              child: _buildOwnerStatCard(
+                                icon: Icons.event,
+                                tag: '5 Days window',
+                                tagColor: _renewalsDueCount > 0 ? AppColors.rose600 : AppColors.emerald600,
+                                tagBg: _renewalsDueCount > 0 ? AppColors.rose50 : AppColors.emerald50,
+                                label: 'RENEWALS DUE',
+                                val: '$_renewalsDueCount',
+                                iconBg: _renewalsDueCount > 0 ? AppColors.rose50 : AppColors.slate100,
+                                iconColor: _renewalsDueCount > 0 ? AppColors.rose600 : AppColors.slate600,
+                              ),
                             ),
                           ),
                         ],
@@ -812,6 +855,10 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                   ],
                 ),
               ),
+              const SizedBox(height: 18),
+
+              // Fee Collections & Total Collection Details Section
+              _buildFeeCollectionsSection(),
             ],
           ),
         ),
@@ -943,8 +990,8 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
 
     // Compute list of seats to display
     final List<int> seatNumbers = List.generate(totalSeats, (i) => i + 1);
-    final filteredSeats = seatNumbers.where((num) {
-      final seat = _getSeatInfo(num);
+    final filteredSeats = seatNumbers.where((seatNo) {
+      final seat = _getSeatInfo(seatNo);
       final stLower = seat.status.toLowerCase();
       final isOccupied = stLower.contains('occupied');
       final isReserved = stLower.contains('reserved');
@@ -956,9 +1003,9 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
 
       if (_seatSearch.trim().isNotEmpty) {
         final q = _seatSearch.trim().toLowerCase();
-        final member = _getMemberForSeat(num);
+        final member = _getMemberForSeat(seatNo);
         final name = (member?.name ?? seat.student).toLowerCase();
-        final numStr = '$num';
+        final numStr = '$seatNo';
         if (!numStr.contains(q) && !name.contains(q)) return false;
       }
 
@@ -1733,8 +1780,14 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
   // TAB 3: MEMBERS & ATTENDANCE
   // ==========================================
   Widget _buildMembersTab() {
+    final dueCount = _members.where((m) => m.isDueSoon).length;
+    final paidCount = _members.where((m) => !m.isDueSoon).length;
     final filtered = _members.where((m) {
-      return '${m.name} ${m.seat} ${m.plan} ${m.phone}'.toLowerCase().contains(_memberSearch.toLowerCase());
+      final matchesSearch = '${m.name} ${m.seat} ${m.plan} ${m.phone}'.toLowerCase().contains(_memberSearch.toLowerCase());
+      if (!matchesSearch) return false;
+      if (_memberValidityFilter == 'due_soon') return m.isDueSoon;
+      if (_memberValidityFilter == 'paid') return !m.isDueSoon;
+      return true;
     }).toList();
 
     return Column(
@@ -1764,7 +1817,7 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                         onPressed: () => _openStandeeQRModal(),
                         icon: const Icon(Icons.qr_code_2_rounded, size: 14, color: Colors.white),
                         label: const Text(
-                          'Gate QR',
+                          'Attendance QR',
                           style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 11),
                         ),
                         style: OutlinedButton.styleFrom(
@@ -1884,6 +1937,23 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                   ],
                 ),
               ),
+
+              // Filter pills for Active tab: All, Due Soon, Paid
+              if (_membersSubTab == 'active') ...[
+                const SizedBox(height: 12),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _buildMemberFilterPill('all', 'All (${_members.length})', null),
+                      const SizedBox(width: 8),
+                      _buildMemberFilterPill('due_soon', '⚠️ Renewal Due ($dueCount)', Colors.red.shade400),
+                      const SizedBox(width: 8),
+                      _buildMemberFilterPill('paid', '✅ Paid & Valid ($paidCount)', AppColors.emerald500),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -2055,19 +2125,25 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
               // Members List
               else
                 ...filtered.map((m) {
+                  final isDue = m.isDueSoon;
                   final isActive = m.membershipStatus.toUpperCase() == 'ACTIVE';
                   final isPresent = m.status.toLowerCase().contains('present');
 
                   return Container(
                     margin: const EdgeInsets.only(bottom: 14),
-                    padding: const EdgeInsets.all(16),
+                    clipBehavior: Clip.antiAlias,
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: AppColors.slate200),
+                      border: Border.all(
+                        color: isDue ? Colors.red.shade400 : AppColors.slate200,
+                        width: isDue ? 1.5 : 1,
+                      ),
                       boxShadow: [
                         BoxShadow(
-                          color: AppColors.slate900.withValues(alpha: 0.04),
+                          color: isDue
+                              ? Colors.red.withOpacity(0.06)
+                              : AppColors.slate900.withValues(alpha: 0.04),
                           blurRadius: 10,
                           offset: const Offset(0, 3),
                         ),
@@ -2076,413 +2152,545 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // Row 1: Avatar + Name & Phone + Status Badge & Punch Indicator
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            Container(
-                              width: 44,
-                              height: 44,
-                              decoration: BoxDecoration(
-                                color: AppColors.indigo50,
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: AppColors.indigo100),
-                              ),
-                              alignment: Alignment.center,
-                              child: Text(
-                                m.name.isNotEmpty
-                                    ? m.name.substring(0, m.name.length >= 2 ? 2 : 1).toUpperCase()
-                                    : 'M',
-                                style: const TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w900,
-                                  color: AppColors.indigo950,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    m.name,
-                                    style: const TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w900,
-                                      color: AppColors.slate900,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                        // Red Top Banner if Expiring in <= 5 Days
+                        if (isDue)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            color: const Color(0xFFFEF2F2),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.warning_amber_rounded, size: 16, color: Colors.red),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    '⚠️ Renewal Due in ${m.daysRemaining} days (Valid till: ${m.validTill ?? "Soon"}) · Fee: ₹${m.monthlyFee?.toInt() ?? 499}',
+                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.red),
                                   ),
-                                  const SizedBox(height: 2),
-                                  Row(
-                                    children: [
-                                      const Icon(Icons.phone_rounded, size: 11, color: AppColors.slate400),
-                                      const SizedBox(width: 4),
-                                      Expanded(
-                                        child: Text(
-                                          m.phone,
+                                ),
+                              ],
+                            ),
+                          ),
+
+                        Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              // Row 1: Avatar + Name & Phone + Status Badge & Punch Indicator
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    width: 44,
+                                    height: 44,
+                                    decoration: BoxDecoration(
+                                      color: isDue ? const Color(0xFFFEF2F2) : AppColors.indigo50,
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(color: isDue ? const Color(0xFFFECACA) : AppColors.indigo100),
+                                    ),
+                                    alignment: Alignment.center,
+                                    child: Text(
+                                      m.name.isNotEmpty
+                                          ? m.name.substring(0, m.name.length >= 2 ? 2 : 1).toUpperCase()
+                                          : 'M',
+                                      style: TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w900,
+                                        color: isDue ? Colors.red.shade900 : AppColors.indigo950,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          m.name,
                                           style: const TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w600,
-                                            color: AppColors.slate500,
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w900,
+                                            color: AppColors.slate900,
                                           ),
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                         ),
+                                        const SizedBox(height: 2),
+                                        Row(
+                                          children: [
+                                            const Icon(Icons.phone_rounded, size: 11, color: AppColors.slate400),
+                                            const SizedBox(width: 4),
+                                            Expanded(
+                                              child: Text(
+                                                m.phone,
+                                                style: const TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: AppColors.slate500,
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: isDue
+                                              ? const Color(0xFFFEF2F2)
+                                              : (isActive ? AppColors.emerald50 : AppColors.slate100),
+                                          borderRadius: BorderRadius.circular(10),
+                                          border: Border.all(
+                                            color: isDue
+                                                ? Colors.red.shade300
+                                                : (isActive ? AppColors.emerald200 : AppColors.slate200),
+                                          ),
+                                        ),
+                                        child: Text(
+                                          isDue
+                                              ? 'Due in ${m.daysRemaining}d'
+                                              : (isActive ? 'Paid · Active' : 'Inactive'),
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w900,
+                                            color: isDue
+                                                ? Colors.red
+                                                : (isActive ? AppColors.emerald700 : AppColors.slate600),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            isPresent ? Icons.circle : Icons.circle_outlined,
+                                            size: 7,
+                                            color: isPresent ? AppColors.emerald600 : AppColors.slate400,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            isPresent
+                                                ? (m.checkInTime != null ? 'In: ${m.checkInTime}' : 'Present')
+                                                : m.status,
+                                            style: TextStyle(
+                                              fontSize: 9.5,
+                                              fontWeight: FontWeight.w600,
+                                              color: isPresent ? AppColors.emerald700 : AppColors.slate500,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ],
                                   ),
                                 ],
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                  decoration: BoxDecoration(
-                                    color: isActive ? AppColors.emerald50 : AppColors.slate100,
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(color: isActive ? AppColors.emerald200 : AppColors.slate200),
-                                  ),
-                                  child: Text(
-                                    isActive ? 'Active' : 'Inactive',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w900,
-                                      color: isActive ? AppColors.emerald700 : AppColors.slate600,
+
+                              const SizedBox(height: 12),
+
+                              // Row 2: Informational Chips (Seat, Plan, Shift, Validity)
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 6,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.indigo50,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: AppColors.indigo200.withValues(alpha: 0.5)),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(Icons.chair_rounded, size: 12, color: AppColors.indigo950),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          m.seat,
+                                          style: const TextStyle(
+                                            fontSize: 10.5,
+                                            fontWeight: FontWeight.w800,
+                                            color: AppColors.indigo950,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
-                                ),
-                                const SizedBox(height: 4),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.slate100,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: AppColors.slate200),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(Icons.card_membership_rounded, size: 12, color: AppColors.slate700),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          '${m.plan} · ₹${m.monthlyFee?.toInt() ?? 499}/mo',
+                                          style: const TextStyle(
+                                            fontSize: 10.5,
+                                            fontWeight: FontWeight.w700,
+                                            color: AppColors.slate700,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (m.shiftTiming != null && m.shiftTiming!.isNotEmpty)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.orange50,
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: AppColors.orange200),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(Icons.access_time_rounded, size: 12, color: AppColors.orange600),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            m.shiftTiming!,
+                                            style: const TextStyle(
+                                              fontSize: 10.5,
+                                              fontWeight: FontWeight.w800,
+                                              color: AppColors.orange700,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  if (m.validTill != null)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: isDue ? const Color(0xFFFEF2F2) : AppColors.emerald50,
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: isDue ? const Color(0xFFFECACA) : AppColors.emerald200),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.calendar_today_rounded,
+                                            size: 11,
+                                            color: isDue ? Colors.red : AppColors.emerald700,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            'Valid till ${m.validTill}',
+                                            style: TextStyle(
+                                              fontSize: 10.5,
+                                              fontWeight: FontWeight.w800,
+                                              color: isDue ? Colors.red : AppColors.emerald700,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                ],
+                              ),
+
+                              // Dedicated Action Bar when Renewal is Due
+                              if (isDue) ...[
+                                const SizedBox(height: 12),
                                 Row(
-                                  mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(
-                                      isPresent ? Icons.circle : Icons.circle_outlined,
-                                      size: 7,
-                                      color: isPresent ? AppColors.emerald600 : AppColors.slate400,
+                                    Expanded(
+                                      child: ElevatedButton.icon(
+                                        onPressed: () => _sendWhatsAppReminder(m),
+                                        icon: const Icon(Icons.chat_bubble_outline_rounded, size: 14, color: Colors.white),
+                                        label: const Text(
+                                          'WhatsApp Reminder',
+                                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white),
+                                        ),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: const Color(0xFF16A34A),
+                                          elevation: 0,
+                                          padding: const EdgeInsets.symmetric(vertical: 9),
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                        ),
+                                      ),
                                     ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      isPresent
-                                          ? (m.checkInTime != null ? 'In: ${m.checkInTime}' : 'Present')
-                                          : m.status,
-                                      style: TextStyle(
-                                        fontSize: 9.5,
-                                        fontWeight: FontWeight.w600,
-                                        color: isPresent ? AppColors.emerald700 : AppColors.slate500,
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: ElevatedButton.icon(
+                                        onPressed: () => _openCollectDueModal(m),
+                                        icon: const Icon(Icons.payments_rounded, size: 14, color: Colors.white),
+                                        label: Text(
+                                          'Collect ₹${m.monthlyFee?.toInt() ?? 499}',
+                                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white),
+                                        ),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: AppColors.orange500,
+                                          elevation: 0,
+                                          padding: const EdgeInsets.symmetric(vertical: 9),
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                        ),
                                       ),
                                     ),
                                   ],
                                 ),
                               ],
-                            ),
-                          ],
-                        ),
 
-                        const SizedBox(height: 12),
+                              const SizedBox(height: 12),
+                              const Divider(height: 1, color: AppColors.slate100),
+                              const SizedBox(height: 10),
 
-                        // Row 2: Informational Chips (Seat, Plan, Shift)
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 6,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: AppColors.indigo50,
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: AppColors.indigo200.withValues(alpha: 0.5)),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
+                              // Row 3: Standard Action Buttons (Profile, Seat, Remove, Menu)
+                              Row(
                                 children: [
-                                  const Icon(Icons.chair_rounded, size: 12, color: AppColors.indigo950),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    m.seat,
-                                    style: const TextStyle(
-                                      fontSize: 10.5,
-                                      fontWeight: FontWeight.w800,
-                                      color: AppColors.indigo950,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: AppColors.slate100,
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: AppColors.slate200),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.card_membership_rounded, size: 12, color: AppColors.slate700),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    m.plan,
-                                    style: const TextStyle(
-                                      fontSize: 10.5,
-                                      fontWeight: FontWeight.w700,
-                                      color: AppColors.slate700,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            if (m.shiftTiming != null && m.shiftTiming!.isNotEmpty)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: AppColors.orange50,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: AppColors.orange200),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.access_time_rounded, size: 12, color: AppColors.orange600),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      m.shiftTiming!,
-                                      style: const TextStyle(
-                                        fontSize: 10.5,
-                                        fontWeight: FontWeight.w800,
-                                        color: AppColors.orange700,
+                                  // View Profile Button
+                                  Expanded(
+                                    child: InkWell(
+                                      onTap: m.studentId != null ? () => _openMemberProfileModal(m) : null,
+                                      borderRadius: BorderRadius.circular(10),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(vertical: 8),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.indigo50,
+                                          borderRadius: BorderRadius.circular(10),
+                                          border: Border.all(color: AppColors.indigo100),
+                                        ),
+                                        alignment: Alignment.center,
+                                        child: const Row(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Icon(Icons.visibility_outlined, size: 13, color: AppColors.indigo950),
+                                            SizedBox(width: 4),
+                                            Text(
+                                              'Profile',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w800,
+                                                color: AppColors.indigo950,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+
+                                  // Re-allot Seat Button
+                                  Expanded(
+                                    child: InkWell(
+                                      onTap: m.studentId != null ? () => _openReallotSeatModal(m) : null,
+                                      borderRadius: BorderRadius.circular(10),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(vertical: 8),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.orange50,
+                                          borderRadius: BorderRadius.circular(10),
+                                          border: Border.all(color: AppColors.orange200),
+                                        ),
+                                        alignment: Alignment.center,
+                                        child: const Row(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Icon(Icons.chair_alt_rounded, size: 13, color: AppColors.orange600),
+                                            SizedBox(width: 4),
+                                            Text(
+                                              'Seat',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w800,
+                                                color: AppColors.orange700,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+
+                                  // Direct Remove Button
+                                  Expanded(
+                                    child: InkWell(
+                                      onTap: m.studentId != null ? () => _confirmRemoveMember(m) : null,
+                                      borderRadius: BorderRadius.circular(10),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(vertical: 8),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFFEF2F2),
+                                          borderRadius: BorderRadius.circular(10),
+                                          border: Border.all(color: const Color(0xFFFECACA)),
+                                        ),
+                                        alignment: Alignment.center,
+                                        child: const Row(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Icon(Icons.delete_outline_rounded, size: 13, color: Colors.red),
+                                            SizedBox(width: 4),
+                                            Text(
+                                              'Remove',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w800,
+                                                color: Colors.red,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+
+                                  // 3-dots Menu for secondary actions
+                                  if (m.studentId != null) ...[
+                                    const SizedBox(width: 4),
+                                    PopupMenuButton<String>(
+                                      padding: EdgeInsets.zero,
+                                      icon: const Icon(Icons.more_vert_rounded, size: 20, color: AppColors.slate600),
+                                      onSelected: (action) async {
+                                        if (action == 'COLLECT_DUE') {
+                                          _openCollectDueModal(m);
+                                        } else if (action == 'WHATSAPP_REMINDER') {
+                                          _sendWhatsAppReminder(m);
+                                        } else if (action == 'VIEW_PROFILE') {
+                                          _openMemberProfileModal(m);
+                                        } else if (action == 'REALLOT_SEAT') {
+                                          _openReallotSeatModal(m);
+                                        } else if (action == 'TOGGLE_STATUS') {
+                                          _toggleMemberStatus(m);
+                                        } else if (action == 'RELEASE_SEAT') {
+                                          final confirm = await showDialog<bool>(
+                                            context: context,
+                                            builder: (c) => AlertDialog(
+                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                              title: const Text('Release Seat?'),
+                                              content: Text(
+                                                'Are you sure you want to release ${m.name}\'s seat? The student remains registered.',
+                                                style: const TextStyle(fontSize: 13),
+                                              ),
+                                              actions: [
+                                                TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
+                                                TextButton(
+                                                  onPressed: () => Navigator.pop(c, true),
+                                                  child: const Text('Release', style: TextStyle(color: Colors.red)),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                          if (confirm == true) {
+                                            final res = await ApiService.removeMember(m.studentId!, action: 'RELEASE_SEAT');
+                                            if (res.success) {
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                SnackBar(
+                                                  content: Text(res.message ?? 'Seat released successfully'),
+                                                  backgroundColor: AppColors.emerald500,
+                                                ),
+                                              );
+                                              _loadMembersData();
+                                              _loadFloorMapData();
+                                            } else {
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                SnackBar(
+                                                  content: Text(res.message ?? 'Operation failed'),
+                                                  backgroundColor: Colors.red,
+                                                ),
+                                              );
+                                            }
+                                          }
+                                        } else if (action == 'REMOVE') {
+                                          _confirmRemoveMember(m);
+                                        }
+                                      },
+                                      itemBuilder: (c) => [
+                                        PopupMenuItem(
+                                          value: 'COLLECT_DUE',
+                                          child: Row(
+                                            children: const [
+                                              Icon(Icons.payments_outlined, size: 16, color: AppColors.emerald600),
+                                              SizedBox(width: 8),
+                                              Text('Collect Fee / Due', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                                            ],
+                                          ),
+                                        ),
+                                        PopupMenuItem(
+                                          value: 'WHATSAPP_REMINDER',
+                                          child: Row(
+                                            children: const [
+                                              Icon(Icons.chat_bubble_outline_rounded, size: 16, color: Color(0xFF16A34A)),
+                                              SizedBox(width: 8),
+                                              Text('WhatsApp Reminder', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                                            ],
+                                          ),
+                                        ),
+                                        const PopupMenuDivider(),
+                                        PopupMenuItem(
+                                          value: 'VIEW_PROFILE',
+                                          child: Row(
+                                            children: const [
+                                              Icon(Icons.person_outline_rounded, size: 16, color: AppColors.primary),
+                                              SizedBox(width: 8),
+                                              Text('View Profile', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                                            ],
+                                          ),
+                                        ),
+                                        PopupMenuItem(
+                                          value: 'REALLOT_SEAT',
+                                          child: Row(
+                                            children: const [
+                                              Icon(Icons.chair_alt_rounded, size: 16, color: AppColors.orange600),
+                                              SizedBox(width: 8),
+                                              Text('Re-allot Seat', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                                            ],
+                                          ),
+                                        ),
+                                        PopupMenuItem(
+                                          value: 'TOGGLE_STATUS',
+                                          child: Row(
+                                            children: [
+                                              Icon(isActive ? Icons.pause_circle_outline_rounded : Icons.play_circle_outline_rounded,
+                                                  size: 16, color: isActive ? AppColors.slate600 : AppColors.emerald600),
+                                              const SizedBox(width: 8),
+                                              Text(isActive ? 'Mark Inactive' : 'Mark Active',
+                                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                                            ],
+                                          ),
+                                        ),
+                                        const PopupMenuItem(
+                                          value: 'RELEASE_SEAT',
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.event_seat_outlined, size: 16, color: Colors.orange),
+                                              SizedBox(width: 8),
+                                              Text('Release Seat Only', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.orange)),
+                                            ],
+                                          ),
+                                        ),
+                                        const PopupMenuDivider(),
+                                        const PopupMenuItem(
+                                          value: 'REMOVE',
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.delete_forever_rounded, size: 16, color: Colors.red),
+                                              SizedBox(width: 8),
+                                              Text('Remove Member', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.red)),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ],
-                                ),
-                              ),
-                          ],
-                        ),
-
-                        const SizedBox(height: 12),
-                        const Divider(height: 1, color: AppColors.slate100),
-                        const SizedBox(height: 10),
-
-                        // Row 3: Action Buttons (Profile, Seat, Remove, Menu)
-                        Row(
-                          children: [
-                            // View Profile Button
-                            Expanded(
-                              child: InkWell(
-                                onTap: m.studentId != null ? () => _openMemberProfileModal(m) : null,
-                                borderRadius: BorderRadius.circular(10),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(vertical: 8),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.indigo50,
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(color: AppColors.indigo100),
-                                  ),
-                                  alignment: Alignment.center,
-                                  child: const Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(Icons.visibility_outlined, size: 13, color: AppColors.indigo950),
-                                      SizedBox(width: 4),
-                                      Text(
-                                        'Profile',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w800,
-                                          color: AppColors.indigo950,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-
-                            // Re-allot Seat Button
-                            Expanded(
-                              child: InkWell(
-                                onTap: m.studentId != null ? () => _openReallotSeatModal(m) : null,
-                                borderRadius: BorderRadius.circular(10),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(vertical: 8),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.orange50,
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(color: AppColors.orange200),
-                                  ),
-                                  alignment: Alignment.center,
-                                  child: const Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(Icons.chair_alt_rounded, size: 13, color: AppColors.orange600),
-                                      SizedBox(width: 4),
-                                      Text(
-                                        'Seat',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w800,
-                                          color: AppColors.orange700,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-
-                            // Direct Remove Button
-                            Expanded(
-                              child: InkWell(
-                                onTap: m.studentId != null ? () => _confirmRemoveMember(m) : null,
-                                borderRadius: BorderRadius.circular(10),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(vertical: 8),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFFEF2F2), // Red 50
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(color: const Color(0xFFFECACA)), // Red 200
-                                  ),
-                                  alignment: Alignment.center,
-                                  child: const Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(Icons.delete_outline_rounded, size: 13, color: Colors.red),
-                                      SizedBox(width: 4),
-                                      Text(
-                                        'Remove',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w800,
-                                          color: Colors.red,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-
-                            // 3-dots Menu for secondary actions
-                            if (m.studentId != null) ...[
-                              const SizedBox(width: 4),
-                              PopupMenuButton<String>(
-                                padding: EdgeInsets.zero,
-                                icon: const Icon(Icons.more_vert_rounded, size: 20, color: AppColors.slate600),
-                                onSelected: (action) async {
-                                  if (action == 'VIEW_PROFILE') {
-                                    _openMemberProfileModal(m);
-                                  } else if (action == 'REALLOT_SEAT') {
-                                    _openReallotSeatModal(m);
-                                  } else if (action == 'TOGGLE_STATUS') {
-                                    _toggleMemberStatus(m);
-                                  } else if (action == 'RELEASE_SEAT') {
-                                    final confirm = await showDialog<bool>(
-                                      context: context,
-                                      builder: (c) => AlertDialog(
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                        title: const Text('Release Seat?'),
-                                        content: Text(
-                                          'Are you sure you want to release ${m.name}\'s seat? The student remains registered.',
-                                          style: const TextStyle(fontSize: 13),
-                                        ),
-                                        actions: [
-                                          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
-                                          TextButton(
-                                            onPressed: () => Navigator.pop(c, true),
-                                            child: const Text('Release', style: TextStyle(color: Colors.red)),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                    if (confirm == true) {
-                                      final res = await ApiService.removeMember(m.studentId!, action: 'RELEASE_SEAT');
-                                      if (res.success) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(
-                                            content: Text(res.message ?? 'Seat released successfully'),
-                                            backgroundColor: AppColors.emerald500,
-                                          ),
-                                        );
-                                        _loadMembersData();
-                                        _loadFloorMapData();
-                                      } else {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(
-                                            content: Text(res.message ?? 'Operation failed'),
-                                            backgroundColor: Colors.red,
-                                          ),
-                                        );
-                                      }
-                                    }
-                                  } else if (action == 'REMOVE') {
-                                    _confirmRemoveMember(m);
-                                  }
-                                },
-                                itemBuilder: (c) => [
-                                  PopupMenuItem(
-                                    value: 'VIEW_PROFILE',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.person_outline_rounded, size: 16, color: AppColors.primary),
-                                        const SizedBox(width: 8),
-                                        const Text('View Profile', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-                                      ],
-                                    ),
-                                  ),
-                                  PopupMenuItem(
-                                    value: 'REALLOT_SEAT',
-                                    child: Row(
-                                      children: [
-                                        const Icon(Icons.chair_alt_rounded, size: 16, color: AppColors.orange600),
-                                        const SizedBox(width: 8),
-                                        const Text('Re-allot Seat', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-                                      ],
-                                    ),
-                                  ),
-                                  PopupMenuItem(
-                                    value: 'TOGGLE_STATUS',
-                                    child: Row(
-                                      children: [
-                                        Icon(isActive ? Icons.pause_circle_outline_rounded : Icons.play_circle_outline_rounded,
-                                            size: 16, color: isActive ? AppColors.slate600 : AppColors.emerald600),
-                                        const SizedBox(width: 8),
-                                        Text(isActive ? 'Mark Inactive' : 'Mark Active',
-                                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-                                      ],
-                                    ),
-                                  ),
-                                  const PopupMenuItem(
-                                    value: 'RELEASE_SEAT',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.event_seat_outlined, size: 16, color: Colors.orange),
-                                        SizedBox(width: 8),
-                                        Text('Release Seat Only', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.orange)),
-                                      ],
-                                    ),
-                                  ),
-                                  const PopupMenuDivider(),
-                                  const PopupMenuItem(
-                                    value: 'REMOVE',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.delete_forever_rounded, size: 16, color: Colors.red),
-                                        SizedBox(width: 8),
-                                        Text('Remove Member', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.red)),
-                                      ],
-                                    ),
-                                  ),
                                 ],
                               ),
                             ],
-                          ],
+                          ),
                         ),
                       ],
                     ),
@@ -3020,7 +3228,7 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                           Icon(Icons.qr_code, color: AppColors.orange500, size: 20),
                           SizedBox(width: 12),
                           Text(
-                            'View & Print Gate Attendance Standee QR',
+                            'View & Print Attendance Standee QR',
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w800,
@@ -4203,7 +4411,7 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: const [
                       Text(
-                        'OFFICIAL GATE QR',
+                        'OFFICIAL ATTENDANCE QR',
                         style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w900,
@@ -4275,116 +4483,6 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  void _openDeskScannerModal() {
-    bool scanDone = false;
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setScanState) {
-          return Dialog(
-            backgroundColor: AppColors.slate950,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text(
-                            'DESK SCANNER',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w900,
-                              color: AppColors.orange400,
-                              letterSpacing: 1,
-                            ),
-                          ),
-                          Text(
-                            'Scan Student Gate Pass',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w900,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
-                      ),
-                      IconButton(
-                        onPressed: () => Navigator.of(ctx).pop(),
-                        icon: const Icon(Icons.close, color: Colors.white),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-
-                  if (!scanDone) ...[
-                    Container(
-                      width: 180,
-                      height: 180,
-                      decoration: BoxDecoration(
-                        color: Colors.black,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.white.withOpacity(0.2)),
-                      ),
-                      alignment: Alignment.center,
-                      child: const QRCodeGraphic(size: 110),
-                    ),
-                    const SizedBox(height: 14),
-                    const Text(
-                      'Point phone camera at student’s digital pass.',
-                      style: TextStyle(fontSize: 11, color: AppColors.slate400),
-                    ),
-                    const SizedBox(height: 20),
-                    CustomButton(
-                      label: 'Simulate Student Pass Scan',
-                      onPressed: () => setScanState(() => scanDone = true),
-                    ),
-                  ] else ...[
-                    Container(
-                      width: 56,
-                      height: 56,
-                      decoration: const BoxDecoration(
-                        color: AppColors.emerald500,
-                        shape: BoxShape.circle,
-                      ),
-                      alignment: Alignment.center,
-                      child: const Icon(Icons.check, color: Colors.white, size: 32),
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Student Pass Verified!',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    const Text(
-                      'Aarav Kumar (Seat #B-14)',
-                      style: TextStyle(fontSize: 12, color: AppColors.emerald400),
-                    ),
-                    const SizedBox(height: 20),
-                    CustomButton(
-                      label: 'Done',
-                      variant: ButtonVariant.secondary,
-                      onPressed: () => Navigator.of(ctx).pop(),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          );
-        },
       ),
     );
   }
@@ -5450,6 +5548,927 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                             },
                     ),
                   ],
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildMemberFilterPill(String filterKey, String label, Color? accentColor) {
+    final isSelected = _memberValidityFilter == filterKey;
+    return InkWell(
+      onTap: () => setState(() => _memberValidityFilter = filterKey),
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? (accentColor ?? Colors.white)
+              : Colors.white.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? Colors.transparent : Colors.white24,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            color: isSelected
+                ? (accentColor != null ? Colors.white : AppColors.indigo950)
+                : Colors.white70,
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _getMonthName(int month) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    if (month >= 1 && month <= 12) return months[month - 1];
+    return '';
+  }
+
+  Widget _buildModeChip(String mode, String label, String selected, ValueChanged<String> onSelected) {
+    final isSel = mode == selected;
+    return Expanded(
+      child: InkWell(
+        onTap: () => onSelected(mode),
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: isSel ? AppColors.indigo950 : AppColors.slate100,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              color: isSel ? Colors.white : AppColors.slate700,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _sendWhatsAppReminder(MemberInfo m) async {
+    final cleanPhone = m.phone.replaceAll(RegExp(r'\D'), '');
+    final phoneWithCode = cleanPhone.length == 10 ? '91$cleanPhone' : cleanPhone;
+    final fee = m.monthlyFee?.toInt() ?? 499;
+    final validDate = m.validTill ?? 'soon';
+    final msg =
+        'Hello ${m.name},\nYour library membership at $_libraryName (${m.seat}) is due for renewal on $validDate.\nPlease pay your monthly fee of ₹$fee to continue your seat without interruption.\n\nThank you,\n$_libraryName';
+    final uri = Uri.parse('whatsapp://send?phone=$phoneWithCode&text=${Uri.encodeComponent(msg)}');
+    final fallback = Uri.parse('https://wa.me/$phoneWithCode?text=${Uri.encodeComponent(msg)}');
+
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        await launchUrl(fallback, mode: LaunchMode.externalApplication);
+      }
+    } catch (_) {
+      await launchUrl(fallback, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  Widget _buildFeeCollectionsSection() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.slate200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'TOTAL COLLECTION DETAILS',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.slate400,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      const Text(
+                        'Fee Collections',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.slate900,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.emerald50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppColors.emerald200),
+                        ),
+                        child: Text(
+                          '₹${_totalCollectedAmount.toInt()}',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.emerald700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              IconButton(
+                onPressed: _loadCollectionsData,
+                icon: _loadingCollections
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.orange500),
+                      )
+                    : const Icon(Icons.refresh_rounded, size: 18, color: AppColors.slate500),
+                tooltip: 'Refresh Collections',
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          if (_feeCollections.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: AppColors.slate50,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.slate200),
+              ),
+              child: Column(
+                children: const [
+                  Icon(Icons.receipt_long_outlined, size: 32, color: AppColors.slate400),
+                  SizedBox(height: 8),
+                  Text(
+                    'No Fee Collections Yet',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.slate700),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'When you collect monthly fees from members using "Collect Due", receipts will be tracked here.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 11, color: AppColors.slate400),
+                  ),
+                ],
+              ),
+            )
+          else
+            ..._feeCollections.map((col) {
+              return Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.slate50,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: AppColors.slate200),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: AppColors.emerald50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.emerald200),
+                      ),
+                      alignment: Alignment.center,
+                      child: const Icon(Icons.receipt_rounded, size: 20, color: AppColors.emerald600),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  col.studentName,
+                                  style: const TextStyle(
+                                    fontSize: 13.5,
+                                    fontWeight: FontWeight.w900,
+                                    color: AppColors.slate900,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              Text(
+                                '₹${col.collectedAmount.toInt()}',
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w900,
+                                  color: AppColors.emerald700,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 3),
+                          Row(
+                            children: [
+                              Text(
+                                col.seatLabel ?? 'Desk',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.indigo950,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              const Text('·', style: TextStyle(color: AppColors.slate400)),
+                              const SizedBox(width: 6),
+                              Text(
+                                '📅 ${col.collectionDate}',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.slate600,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.indigo50,
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      col.paymentMode,
+                                      style: const TextStyle(
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.w800,
+                                        color: AppColors.indigo950,
+                                      ),
+                                    ),
+                                  ),
+                                  if (col.originalAmount > col.collectedAmount) ...[
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      '(Orig: ₹${col.originalAmount.toInt()})',
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        color: AppColors.slate400,
+                                        decoration: TextDecoration.lineThrough,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              // Edit Button (Amount and Date only - NO delete)
+                              InkWell(
+                                onTap: () => _openEditCollectionModal(col),
+                                borderRadius: BorderRadius.circular(8),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: AppColors.slate200),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.edit_outlined, size: 12, color: AppColors.slate600),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        'Edit',
+                                        style: TextStyle(
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.w800,
+                                          color: AppColors.slate700,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (col.remarks != null && col.remarks!.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              'Note: ${col.remarks!}',
+                              style: const TextStyle(
+                                fontSize: 10,
+                                fontStyle: FontStyle.italic,
+                                color: AppColors.slate500,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+        ],
+      ),
+    );
+  }
+
+  void _openCollectDueModal(MemberInfo m) {
+    if (m.studentId == null) return;
+    final originalAmount = m.monthlyFee ?? 499;
+    final amountController = TextEditingController(text: originalAmount.toInt().toString());
+    final remarksController = TextEditingController();
+    DateTime selectedDate = DateTime.now();
+    String selectedMode = 'CASH';
+    bool isSubmitting = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) {
+          final dateStr =
+              '${selectedDate.year}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}';
+          final dateDisplay = '${selectedDate.day} ${_getMonthName(selectedDate.month)} ${selectedDate.year}';
+
+          return Dialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(22),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: AppColors.emerald50,
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: const Icon(Icons.payments_rounded, color: AppColors.emerald600, size: 24),
+                          ),
+                          const SizedBox(width: 12),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: const [
+                              Text(
+                                'Collect Due Fee',
+                                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: AppColors.slate900),
+                              ),
+                              Text(
+                                'Record offline fee & renew desk',
+                                style: TextStyle(fontSize: 11, color: AppColors.slate500),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      IconButton(
+                        onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Student & Plan Info Banner
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: AppColors.slate50,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppColors.slate200),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              m.name,
+                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: AppColors.slate900),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: AppColors.indigo50,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                m.seat,
+                                style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: AppColors.indigo950),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${m.plan} · Standard: ₹${originalAmount.toInt()}/month',
+                          style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.slate600),
+                        ),
+                        if (m.validTill != null) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            'Current validity: ${m.validTill}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: m.isDueSoon ? Colors.red.shade700 : AppColors.slate500,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Amount Input
+                  const Text(
+                    'AMOUNT RECEIVED (₹)',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: AppColors.slate500, letterSpacing: 0.8),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppColors.emerald300, width: 1.5),
+                    ),
+                    child: TextField(
+                      controller: amountController,
+                      keyboardType: TextInputType.number,
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.slate900),
+                      decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.currency_rupee_rounded, color: AppColors.emerald600),
+                        hintText: 'Enter amount (e.g. 400 or 499)',
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'You can enter discounted amount if agreed with student.',
+                    style: TextStyle(fontSize: 10.5, color: AppColors.slate400),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Collection Date Picker
+                  const Text(
+                    'COLLECTION DATE',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: AppColors.slate500, letterSpacing: 0.8),
+                  ),
+                  const SizedBox(height: 6),
+                  InkWell(
+                    onTap: isSubmitting
+                        ? null
+                        : () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: selectedDate,
+                              firstDate: DateTime(2025, 1, 1),
+                              lastDate: DateTime(2030, 12, 31),
+                            );
+                            if (picked != null) {
+                              setModalState(() => selectedDate = picked);
+                            }
+                          },
+                    borderRadius: BorderRadius.circular(14),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: AppColors.slate300),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.calendar_month_rounded, color: AppColors.orange500, size: 20),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              dateDisplay,
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.slate900),
+                            ),
+                          ),
+                          const Icon(Icons.arrow_drop_down, color: AppColors.slate400),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Payment Mode
+                  const Text(
+                    'PAYMENT MODE',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: AppColors.slate500, letterSpacing: 0.8),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      _buildModeChip('CASH', 'Cash 💵', selectedMode, (m) => setModalState(() => selectedMode = m)),
+                      const SizedBox(width: 8),
+                      _buildModeChip('UPI', 'UPI 📱', selectedMode, (m) => setModalState(() => selectedMode = m)),
+                      const SizedBox(width: 8),
+                      _buildModeChip('OFFLINE', 'Offline 🏦', selectedMode, (m) => setModalState(() => selectedMode = m)),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Remarks (Optional)
+                  const Text(
+                    'REMARKS (OPTIONAL)',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: AppColors.slate500, letterSpacing: 0.8),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppColors.slate300),
+                    ),
+                    child: TextField(
+                      controller: remarksController,
+                      style: const TextStyle(fontSize: 12),
+                      decoration: const InputDecoration(
+                        hintText: 'e.g. Paid in cash with special discount',
+                        hintStyle: TextStyle(fontSize: 11.5, color: AppColors.slate400),
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Submit Button
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton(
+                      onPressed: isSubmitting
+                          ? null
+                          : () async {
+                              final amt = num.tryParse(amountController.text.trim());
+                              if (amt == null || amt <= 0) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Please enter a valid amount'), backgroundColor: Colors.red),
+                                );
+                                return;
+                              }
+                              setModalState(() => isSubmitting = true);
+                              final res = await ApiService.recordFeeCollection(
+                                studentId: m.studentId!,
+                                membershipId: m.id,
+                                originalAmount: originalAmount,
+                                collectedAmount: amt,
+                                collectionDate: dateStr,
+                                paymentMode: selectedMode,
+                                remarks: remarksController.text.trim().isNotEmpty ? remarksController.text.trim() : null,
+                              );
+                              if (res.success) {
+                                if (ctx.mounted) Navigator.pop(ctx);
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('₹${amt.toInt()} collected from ${m.name}! Membership renewed to next month.'),
+                                      backgroundColor: AppColors.emerald600,
+                                    ),
+                                  );
+                                  _loadMembersData();
+                                  _loadCollectionsData();
+                                }
+                              } else {
+                                setModalState(() => isSubmitting = false);
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(res.message ?? 'Failed to record collection'),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                }
+                              }
+                            },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.orange500,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        elevation: 0,
+                      ),
+                      child: isSubmitting
+                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                          : const Text(
+                              'Confirm Collection & Renew',
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Colors.white),
+                            ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _openEditCollectionModal(FeeCollectionItem item) {
+    final amountController = TextEditingController(text: item.collectedAmount.toInt().toString());
+    final remarksController = TextEditingController(text: item.remarks ?? '');
+    DateTime selectedDate = DateTime.tryParse(item.collectionDate) ?? DateTime.now();
+    bool isSubmitting = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) {
+          final dateStr =
+              '${selectedDate.year}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}';
+          final dateDisplay = '${selectedDate.day} ${_getMonthName(selectedDate.month)} ${selectedDate.year}';
+
+          return Dialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(22),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: AppColors.indigo50,
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: const Icon(Icons.edit_note_rounded, color: AppColors.indigo950, size: 24),
+                          ),
+                          const SizedBox(width: 12),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: const [
+                              Text(
+                                'Edit Collection',
+                                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: AppColors.slate900),
+                              ),
+                              Text(
+                                'Modify amount and date only',
+                                style: TextStyle(fontSize: 11, color: AppColors.slate500),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      IconButton(
+                        onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Readonly details
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: AppColors.slate50,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppColors.slate200),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.studentName,
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: AppColors.slate900),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${item.seatLabel ?? "Desk"} · ${item.planName ?? "Monthly Plan"} · Original: ₹${item.originalAmount.toInt()}',
+                          style: const TextStyle(fontSize: 11, color: AppColors.slate600),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Amount
+                  const Text(
+                    'COLLECTED AMOUNT (₹)',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: AppColors.slate500, letterSpacing: 0.8),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppColors.emerald300, width: 1.5),
+                    ),
+                    child: TextField(
+                      controller: amountController,
+                      keyboardType: TextInputType.number,
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.slate900),
+                      decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.currency_rupee_rounded, color: AppColors.emerald600),
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Date
+                  const Text(
+                    'COLLECTION DATE',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: AppColors.slate500, letterSpacing: 0.8),
+                  ),
+                  const SizedBox(height: 6),
+                  InkWell(
+                    onTap: isSubmitting
+                        ? null
+                        : () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: selectedDate,
+                              firstDate: DateTime(2025, 1, 1),
+                              lastDate: DateTime(2030, 12, 31),
+                            );
+                            if (picked != null) {
+                              setModalState(() => selectedDate = picked);
+                            }
+                          },
+                    borderRadius: BorderRadius.circular(14),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: AppColors.slate300),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.calendar_month_rounded, color: AppColors.orange500, size: 20),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              dateDisplay,
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.slate900),
+                            ),
+                          ),
+                          const Icon(Icons.arrow_drop_down, color: AppColors.slate400),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Remarks
+                  const Text(
+                    'REMARKS (OPTIONAL)',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: AppColors.slate500, letterSpacing: 0.8),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppColors.slate300),
+                    ),
+                    child: TextField(
+                      controller: remarksController,
+                      style: const TextStyle(fontSize: 12),
+                      decoration: const InputDecoration(
+                        hintText: 'e.g. Corrected entered amount',
+                        hintStyle: TextStyle(fontSize: 11.5, color: AppColors.slate400),
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Security note
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppColors.indigo50.withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      children: const [
+                        Icon(Icons.shield_outlined, size: 14, color: AppColors.indigo950),
+                        SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Receipt records cannot be deleted. Only amount and collection date can be corrected.',
+                            style: TextStyle(fontSize: 10.5, color: AppColors.slate600),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+
+                  // Save Button
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton(
+                      onPressed: isSubmitting
+                          ? null
+                          : () async {
+                              final amt = num.tryParse(amountController.text.trim());
+                              if (amt == null || amt <= 0) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Please enter a valid amount'), backgroundColor: Colors.red),
+                                );
+                                return;
+                              }
+                              setModalState(() => isSubmitting = true);
+                              final res = await ApiService.updateFeeCollection(
+                                item.id,
+                                collectedAmount: amt,
+                                collectionDate: dateStr,
+                                remarks: remarksController.text.trim().isNotEmpty ? remarksController.text.trim() : null,
+                              );
+                              if (res.success) {
+                                if (ctx.mounted) Navigator.pop(ctx);
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Receipt updated: ₹${amt.toInt()} on $dateDisplay'),
+                                      backgroundColor: AppColors.emerald600,
+                                    ),
+                                  );
+                                  _loadCollectionsData();
+                                }
+                              } else {
+                                setModalState(() => isSubmitting = false);
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(res.message ?? 'Failed to update receipt'),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                }
+                              }
+                            },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.indigo950,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        elevation: 0,
+                      ),
+                      child: isSubmitting
+                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                          : const Text(
+                              'Save Changes',
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Colors.white),
+                            ),
+                    ),
+                  ),
                 ],
               ),
             ),

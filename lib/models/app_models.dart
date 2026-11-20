@@ -63,6 +63,15 @@ class MemberInfo {
   final String? shiftTiming;
   final String? checkInTime;
   final String membershipStatus; // 'ACTIVE', 'INACTIVE'
+  final String? startDate;
+  final String? validTill;
+  final num? monthlyFee;
+  final num? amountPaid;
+  final int daysRemaining;
+  final bool isDueSoon;
+  final String paymentStatus; // 'PAID', 'DUE'
+  final String? lastCollectionDate;
+  final num? lastCollectedAmount;
 
   const MemberInfo({
     this.id,
@@ -75,9 +84,23 @@ class MemberInfo {
     this.shiftTiming,
     this.checkInTime,
     this.membershipStatus = 'ACTIVE',
+    this.startDate,
+    this.validTill,
+    this.monthlyFee,
+    this.amountPaid,
+    this.daysRemaining = 30,
+    this.isDueSoon = false,
+    this.paymentStatus = 'PAID',
+    this.lastCollectionDate,
+    this.lastCollectedAmount,
   });
 
   factory MemberInfo.fromJson(Map<String, dynamic> json) {
+    final validTillStr = json['validTill']?.toString();
+    final daysRem = json['daysRemaining'] != null ? num.tryParse(json['daysRemaining'].toString())?.toInt() ?? 30 : 30;
+    final isDue = json['isDueSoon'] == true || daysRem <= 5;
+    final payStatus = json['paymentStatus']?.toString() ?? (isDue ? 'DUE' : 'PAID');
+
     return MemberInfo(
       id: json['id']?.toString(),
       studentId: json['studentId']?.toString(),
@@ -89,6 +112,15 @@ class MemberInfo {
       shiftTiming: json['shiftTiming']?.toString(),
       checkInTime: json['checkInTime']?.toString(),
       membershipStatus: json['membershipStatus']?.toString() ?? 'ACTIVE',
+      startDate: json['startDate']?.toString(),
+      validTill: validTillStr,
+      monthlyFee: json['monthlyFee'] != null ? num.tryParse(json['monthlyFee'].toString()) : null,
+      amountPaid: json['amountPaid'] != null ? num.tryParse(json['amountPaid'].toString()) : null,
+      daysRemaining: daysRem,
+      isDueSoon: isDue,
+      paymentStatus: payStatus,
+      lastCollectionDate: json['lastCollectionDate']?.toString(),
+      lastCollectedAmount: json['lastCollectedAmount'] != null ? num.tryParse(json['lastCollectedAmount'].toString()) : null,
     );
   }
 }
@@ -148,4 +180,54 @@ class ActivityItem {
     required this.detail,
     this.isHighlight = false,
   });
+}
+
+class FeeCollectionItem {
+  final String id;
+  final String studentId;
+  final String studentName;
+  final String? studentPhone;
+  final String? studentCode;
+  final String? seatLabel;
+  final String? planName;
+  final num originalAmount;
+  final num collectedAmount;
+  final String collectionDate;
+  final String paymentMode;
+  final String? remarks;
+  final String? createdAt;
+
+  const FeeCollectionItem({
+    required this.id,
+    required this.studentId,
+    required this.studentName,
+    this.studentPhone,
+    this.studentCode,
+    this.seatLabel,
+    this.planName,
+    required this.originalAmount,
+    required this.collectedAmount,
+    required this.collectionDate,
+    this.paymentMode = 'CASH',
+    this.remarks,
+    this.createdAt,
+  });
+
+  factory FeeCollectionItem.fromJson(Map<String, dynamic> json) {
+    return FeeCollectionItem(
+      id: json['id']?.toString() ?? '',
+      studentId: json['studentId']?.toString() ?? '',
+      studentName: json['studentName']?.toString() ?? 'Student',
+      studentPhone: json['studentPhone']?.toString(),
+      studentCode: json['studentCode']?.toString(),
+      seatLabel: json['seatLabel']?.toString(),
+      planName: json['planName']?.toString(),
+      originalAmount: json['originalAmount'] != null ? num.tryParse(json['originalAmount'].toString()) ?? 0 : 0,
+      collectedAmount: json['collectedAmount'] != null ? num.tryParse(json['collectedAmount'].toString()) ?? 0 : 0,
+      collectionDate: json['collectionDate']?.toString() ?? '',
+      paymentMode: json['paymentMode']?.toString() ?? 'CASH',
+      remarks: json['remarks']?.toString(),
+      createdAt: json['createdAt']?.toString(),
+    );
+  }
 }

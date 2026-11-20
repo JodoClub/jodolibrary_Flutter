@@ -314,7 +314,6 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
   bool _isCheckedIn = true;
   String _checkInTime = '08:15 AM';
   int _selectedCalendarDay = 20;
-  String _attendanceViewMode = 'scanner'; // 'scanner' or 'pass'
 
   // Plan State
   int _planDaysLeft = 5;
@@ -458,7 +457,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
             'Your library membership has expired. Please renew your plan to continue marking attendance.';
       } else if (code == 'OUTSIDE_GEOFENCE') {
         errorTitle = 'Outside Library Boundary ❌';
-        errorBody = 'You must be physically present at the library gate to mark attendance.';
+        errorBody = 'You must be physically present at the library to mark attendance.';
       }
 
       _showAttendanceErrorDialog(errorTitle, errorBody);
@@ -884,7 +883,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
               _buildMembershipCard(),
               const SizedBox(height: 20),
 
-              // SECTION 3: GATE ATTENDANCE & PASS
+              // SECTION 3: ATTENDANCE SCANNER
               _buildAttendanceSection(),
               const SizedBox(height: 20),
 
@@ -1214,241 +1213,331 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
     final daysRemaining = _activeMembershipData?['daysRemaining'] != null
         ? (_activeMembershipData!['daysRemaining'] as num).toInt()
         : _planDaysLeft;
+    final isDueSoon = _activeMembershipData?['isExpiringSoon'] == true || daysRemaining <= 5;
+    final paymentStatus = _activeMembershipData?['paymentStatus']?.toString() ?? (isDueSoon ? 'DUE' : 'PAID');
+    final monthlyFee = _activeMembershipData?['monthlyFee']?.toString() ?? '499';
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [AppColors.indigo900, AppColors.indigo950, AppColors.slate900],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: AppColors.indigo800.withOpacity(0.5)),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.indigo950.withOpacity(0.3),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: const [
-                        Icon(Icons.auto_awesome, color: AppColors.orange400, size: 14),
-                        SizedBox(width: 4),
-                        Text(
-                          'ACTIVE MEMBERSHIP',
-                          style: TextStyle(
-                            color: AppColors.orange400,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 1.2,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      planTitle,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      shiftTitle,
-                      style: const TextStyle(
-                        color: AppColors.indigo200,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: daysRemaining <= 5
-                      ? AppColors.amber500.withOpacity(0.25)
-                      : AppColors.emerald500.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: daysRemaining <= 5 ? AppColors.amber500 : AppColors.emerald400,
-                    width: 1,
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.schedule, color: AppColors.amber300, size: 12),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Expires in $daysRemaining days',
-                      style: const TextStyle(
-                        color: AppColors.amber300,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-
-          // Badges: Assigned Desk & Locker
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                decoration: BoxDecoration(
-                  color: AppColors.orange500,
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.orange500.withOpacity(0.3),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.grid_view_rounded, color: Colors.white, size: 16),
-                    const SizedBox(width: 8),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'ASSIGNED DESK',
-                          style: TextStyle(
-                            color: AppColors.orange100,
-                            fontSize: 9,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        Text(
-                          'Seat #$seatLabel',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Colors.white.withOpacity(0.12)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.lock_outline, color: AppColors.indigo200, size: 16),
-                    const SizedBox(width: 8),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'LOCKER SPACE',
-                          style: TextStyle(
-                            color: AppColors.indigo300,
-                            fontSize: 9,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        Text(
-                          lockerLabel,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-
-          // Validity and Renew CTA
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // 5-Day Renewal Alert Banner if Expiring Soon
+        if (isDueSoon) ...[
           Container(
-            padding: const EdgeInsets.only(top: 14),
+            margin: const EdgeInsets.only(bottom: 14),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              border: Border(top: BorderSide(color: Colors.white.withOpacity(0.12))),
+              color: const Color(0xFFFEF2F2),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFFFECACA), width: 1.5),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.red.withOpacity(0.08),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ],
             ),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Plan Validity',
-                      style: TextStyle(
-                        color: AppColors.indigo300,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    Text(
-                      'Valid till: $validDate',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ],
-                ),
-                ElevatedButton.icon(
-                  onPressed: () => _openRenewPlanModal(),
-                  icon: const Icon(Icons.refresh, size: 14, color: AppColors.orange500),
-                  label: const Text(
-                    'Renew Plan',
-                    style: TextStyle(
-                      color: AppColors.indigo950,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w900,
-                    ),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade600,
+                    shape: BoxShape.circle,
                   ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    elevation: 0,
+                  child: const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 18),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Renewal Due in $daysRemaining Days',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 13,
+                              color: Colors.red.shade900,
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade100,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              '₹$monthlyFee/mo',
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: Colors.red.shade900),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Your desk plan expires on $validDate. Please pay your monthly fee of ₹$monthlyFee to library owner to retain your seat without interruption.',
+                        style: TextStyle(fontSize: 11, color: Colors.red.shade800, height: 1.3),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
         ],
-      ),
+
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(22),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [AppColors.indigo900, AppColors.indigo950, AppColors.slate900],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(
+              color: isDueSoon ? Colors.red.withOpacity(0.5) : AppColors.indigo800.withOpacity(0.5),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.indigo950.withOpacity(0.3),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: const [
+                            Icon(Icons.auto_awesome, color: AppColors.orange400, size: 14),
+                            SizedBox(width: 4),
+                            Text(
+                              'ACTIVE MEMBERSHIP',
+                              style: TextStyle(
+                                color: AppColors.orange400,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 1.2,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          planTitle,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          shiftTitle,
+                          style: const TextStyle(
+                            color: AppColors.indigo200,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: isDueSoon
+                          ? Colors.red.withOpacity(0.25)
+                          : AppColors.emerald500.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: isDueSoon ? Colors.redAccent : AppColors.emerald400,
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          isDueSoon ? Icons.warning_amber_rounded : Icons.check_circle_rounded,
+                          color: isDueSoon ? Colors.redAccent : AppColors.emerald300,
+                          size: 12,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          isDueSoon
+                              ? 'Renewal Due: ${daysRemaining}d left'
+                              : 'Active · Fee Paid · ${daysRemaining}d left',
+                          style: TextStyle(
+                            color: isDueSoon ? Colors.red.shade200 : AppColors.emerald300,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+
+              // Badges: Assigned Desk & Locker
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppColors.orange500,
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.orange500.withOpacity(0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.grid_view_rounded, color: Colors.white, size: 16),
+                        const SizedBox(width: 8),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'ASSIGNED DESK',
+                              style: TextStyle(
+                                color: AppColors.orange100,
+                                fontSize: 9,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            Text(
+                              'Seat #$seatLabel',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: Colors.white.withOpacity(0.12)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.lock_outline, color: AppColors.indigo200, size: 16),
+                        const SizedBox(width: 8),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'LOCKER SPACE',
+                              style: TextStyle(
+                                color: AppColors.indigo300,
+                                fontSize: 9,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            Text(
+                              lockerLabel,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // Validity and Renew CTA
+              Container(
+                padding: const EdgeInsets.only(top: 14),
+                decoration: BoxDecoration(
+                  border: Border(top: BorderSide(color: Colors.white.withOpacity(0.12))),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Plan Validity',
+                          style: TextStyle(
+                            color: AppColors.indigo300,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Text(
+                          'Valid till: $validDate',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                    ElevatedButton.icon(
+                      onPressed: () => _openRenewPlanModal(),
+                      icon: Icon(
+                        isDueSoon ? Icons.payments_rounded : Icons.refresh,
+                        size: 14,
+                        color: isDueSoon ? Colors.white : AppColors.orange500,
+                      ),
+                      label: Text(
+                        isDueSoon ? 'Pay / Renew' : 'Renew Plan',
+                        style: TextStyle(
+                          color: isDueSoon ? Colors.white : AppColors.indigo950,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: isDueSoon ? AppColors.orange500 : Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        elevation: 0,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -1471,7 +1560,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: const [
                     Text(
-                      'GATE ATTENDANCE',
+                      'ATTENDANCE',
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w900,
@@ -1481,7 +1570,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
                     ),
                     SizedBox(height: 2),
                     Text(
-                      'Attendance & Gate Pass',
+                      'Daily Attendance',
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w900,
@@ -1526,329 +1615,148 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
           ),
           const SizedBox(height: 16),
 
-          // Switcher: Scan Library QR vs Show Pass
+          // Attendance Scanner Card
           Container(
-            padding: const EdgeInsets.all(4),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: AppColors.slate100,
-              borderRadius: BorderRadius.circular(16),
+              gradient: const LinearGradient(
+                colors: [AppColors.indigo950, AppColors.indigo900],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(20),
             ),
-            child: Row(
+            child: Column(
               children: [
-                Expanded(
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () => setState(() => _attendanceViewMode = 'scanner'),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
                       decoration: BoxDecoration(
-                        color: _attendanceViewMode == 'scanner' ? Colors.white : Colors.transparent,
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: _attendanceViewMode == 'scanner'
-                            ? [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.04),
-                                  blurRadius: 6,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ]
-                            : null,
+                        color: AppColors.orange500,
+                        borderRadius: BorderRadius.circular(14),
                       ),
                       alignment: Alignment.center,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.camera_alt_outlined,
-                            size: 16,
-                            color: _attendanceViewMode == 'scanner'
-                                ? AppColors.orange600
-                                : AppColors.slate500,
-                          ),
-                          const SizedBox(width: 6),
+                      child: const Icon(Icons.camera_alt, color: Colors.white, size: 22),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: const [
                           Text(
-                            'Scan Library QR',
+                            'Scan Library Attendance QR',
                             style: TextStyle(
-                              fontSize: 12,
+                              color: Colors.white,
                               fontWeight: FontWeight.w900,
-                              color: _attendanceViewMode == 'scanner'
-                                  ? AppColors.orange600
-                                  : AppColors.slate500,
+                              fontSize: 13,
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            'Scan the attendance QR code displayed by library owner to record check-in and punch-out.',
+                            style: TextStyle(
+                              color: AppColors.indigo200,
+                              fontSize: 11,
+                              height: 1.4,
                             ),
                           ),
                         ],
                       ),
                     ),
-                  ),
+                  ],
                 ),
-                Expanded(
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () => setState(() => _attendanceViewMode = 'pass'),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      decoration: BoxDecoration(
-                        color: _attendanceViewMode == 'pass' ? Colors.white : Colors.transparent,
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: _attendanceViewMode == 'pass'
-                            ? [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.04),
-                                  blurRadius: 6,
-                                  offset: const Offset(0, 2),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () => _openScannerModal(),
+                        child: Container(
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: AppColors.primary,
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.primary.withValues(alpha: 0.35),
+                                blurRadius: 10,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          alignment: Alignment.center,
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.qr_code_scanner_rounded, size: 16, color: Colors.white),
+                              SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  'Camera Scanner',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 12,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                              ]
-                            : null,
-                      ),
-                      alignment: Alignment.center,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.qr_code,
-                            size: 16,
-                            color: _attendanceViewMode == 'pass'
-                                ? AppColors.indigo950
-                                : AppColors.slate500,
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Show My Pass',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w900,
-                              color: _attendanceViewMode == 'pass'
-                                  ? AppColors.indigo950
-                                  : AppColors.slate500,
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
                     ),
-                  ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 2,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: _isCheckedIn ? _performPunchOut : _performPunchIn,
+                        child: Container(
+                          height: 44,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+                          ),
+                          alignment: Alignment.center,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.bolt, color: AppColors.amber400, size: 15),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  _isCheckedIn ? 'Punch Out' : 'Quick Punch',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 12,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 16),
-
-          // Content of Switcher
-          if (_attendanceViewMode == 'scanner') ...[
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [AppColors.indigo950, AppColors.indigo900],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: AppColors.orange500,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        alignment: Alignment.center,
-                        child: const Icon(Icons.camera_alt, color: Colors.white, size: 22),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: const [
-                            Text(
-                              'Scan Library Attendance QR',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w900,
-                                fontSize: 13,
-                              ),
-                            ),
-                            SizedBox(height: 4),
-                            Text(
-                              'Scan entrance standee or desk #B-14 QR code. Owner dashboard updates in real-time.',
-                              style: TextStyle(
-                                color: AppColors.indigo200,
-                                fontSize: 11,
-                                height: 1.4,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        flex: 3,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(16),
-                          onTap: () => _openScannerModal(),
-                          child: Container(
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: AppColors.primary,
-                              borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.primary.withValues(alpha: 0.35),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 3),
-                                ),
-                              ],
-                            ),
-                            alignment: Alignment.center,
-                            padding: const EdgeInsets.symmetric(horizontal: 10),
-                            child: const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.qr_code_scanner_rounded, size: 16, color: Colors.white),
-                                SizedBox(width: 6),
-                                Flexible(
-                                  child: Text(
-                                    'Camera Scanner',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w900,
-                                      fontSize: 12,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        flex: 2,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(16),
-                          onTap: _isCheckedIn ? _performPunchOut : _performPunchIn,
-                          child: Container(
-                            height: 44,
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
-                            ),
-                            alignment: Alignment.center,
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.bolt, color: AppColors.amber400, size: 15),
-                                const SizedBox(width: 4),
-                                Flexible(
-                                  child: Text(
-                                    _isCheckedIn ? 'Punch Out' : 'Quick Punch',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w800,
-                                      fontSize: 12,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ] else ...[
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppColors.slate50,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: AppColors.indigo100),
-              ),
-              child: Column(
-                children: [
-                  GestureDetector(
-                    onTap: () => _openQRModal(),
-                    child: const QRCodeGraphic(size: 130),
-                  ),
-                  const SizedBox(height: 10),
-                  const Text(
-                    'Scan at library gate scanner',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.slate800,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  const Text(
-                    'Pass ID: JODO-STU-8842 · Tap QR to expand',
-                    style: TextStyle(fontSize: 10, color: AppColors.slate500),
-                  ),
-                  const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: CustomButton(
-                          label: _isCheckedIn ? 'Punch Out Now' : 'Punch In (Simulate)',
-                          height: 44,
-                          variant: _isCheckedIn ? ButtonVariant.ghost : ButtonVariant.primary,
-                          onPressed: () {
-                            if (_isCheckedIn) {
-                              _performPunchOut();
-                            } else {
-                              _performPunchIn();
-                            }
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      OutlinedButton(
-                        onPressed: () => _openQRModal(),
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: AppColors.indigo200),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                        ),
-                        child: const Row(
-                          children: [
-                            Icon(Icons.fullscreen, size: 16, color: AppColors.indigo950),
-                            SizedBox(width: 4),
-                            Text(
-                              'Expand',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w800,
-                                color: AppColors.indigo950,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
         ],
       ),
     );
@@ -3110,36 +3018,16 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
                               'Valid till: ${_activeMembershipData?['validTill']?.toString() ?? _planValidityDate}',
                               style: const TextStyle(fontSize: 12, color: AppColors.slate500, fontWeight: FontWeight.w600),
                             ),
-                            Row(
-                              children: [
-                                TextButton(
-                                  onPressed: () => _openRenewPlanModal(),
-                                  child: const Text(
-                                    'Renew Plan',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w900,
-                                      color: AppColors.orange500,
-                                    ),
-                                  ),
+                            TextButton(
+                              onPressed: () => _openRenewPlanModal(),
+                              child: const Text(
+                                'Renew Plan',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w900,
+                                  color: AppColors.orange500,
                                 ),
-                                const SizedBox(width: 4),
-                                ElevatedButton.icon(
-                                  onPressed: () => _openQRModal(),
-                                  icon: const Icon(Icons.qr_code, size: 14, color: Colors.white),
-                                  label: const Text(
-                                    'Gate Pass',
-                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white),
-                                  ),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppColors.indigo950,
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                    minimumSize: Size.zero,
-                                    elevation: 0,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                  ),
-                                ),
-                              ],
+                              ),
                             ),
                           ],
                         ),
@@ -4224,7 +4112,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
                     ),
                     const SizedBox(height: 18),
                     const Text(
-                      'Camera Active · Point at gate standee or desk QR code',
+                      'Camera Active · Point at library attendance QR code',
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 11, color: AppColors.slate400),
                     ),
@@ -4291,101 +4179,6 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
     ).then((_) {
       scannerController.dispose();
     });
-  }
-
-  void _openQRModal() {
-    showDialog(
-      context: context,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'LIBRARY GATE PASS',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w900,
-                          color: AppColors.slate400,
-                          letterSpacing: 1,
-                        ),
-                      ),
-                      Text(
-                        _studentName,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w900,
-                          color: AppColors.slate900,
-                        ),
-                      ),
-                    ],
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.of(ctx).pop(),
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              const QRCodeGraphic(size: 180),
-              const SizedBox(height: 16),
-              const Text(
-                'Seat #B-14 · Locker #L-08',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                  color: AppColors.slate900,
-                ),
-              ),
-              const SizedBox(height: 2),
-              const Text(
-                'Achievers Study Hub - Branch 1',
-                style: TextStyle(fontSize: 11, color: AppColors.slate500),
-              ),
-              const SizedBox(height: 14),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: AppColors.emerald50,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircleAvatar(
-                      radius: 3.5,
-                      backgroundColor: _isCheckedIn ? AppColors.emerald500 : AppColors.slate400,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      _isCheckedIn ? 'Inside · Checked in at $_checkInTime' : 'Outside Premises',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors.emerald600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-              CustomButton(
-                label: 'Done / Close',
-                onPressed: () => Navigator.of(ctx).pop(),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   void _openRenewPlanModal() {
@@ -4555,7 +4348,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
               _buildNotifItem(
                 Icons.check_circle_outline,
                 'Attendance Punch Recorded',
-                'Gate punch confirmed at $_checkInTime. Have a focused study session!',
+                'Attendance punch confirmed at $_checkInTime. Have a focused study session!',
                 AppColors.emerald50,
                 AppColors.emerald600,
               ),

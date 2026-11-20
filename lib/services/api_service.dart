@@ -1121,7 +1121,7 @@ class ApiService {
           .timeout(_timeout);
 
       final json = jsonDecode(response.body) as Map<String, dynamic>;
-      if (response.statusCode == 200 && json['success'] == true) {
+      if (response.statusCode == 200) {
         return ApiResponse(success: true, data: json);
       } else {
         return ApiResponse(success: false, message: json['message']?.toString());
@@ -1274,7 +1274,7 @@ class ApiService {
           .timeout(_timeout);
 
       final json = jsonDecode(response.body) as Map<String, dynamic>;
-      if (response.statusCode == 200 && json['success'] == true) {
+      if (response.statusCode == 200) {
         return ApiResponse(success: true, data: json);
       } else {
         return ApiResponse(success: false, message: json['message']?.toString());
@@ -1294,7 +1294,7 @@ class ApiService {
           .timeout(_timeout);
 
       final json = jsonDecode(response.body) as Map<String, dynamic>;
-      if (response.statusCode == 200 && json['success'] == true) {
+      if (response.statusCode == 200) {
         return ApiResponse(success: true, data: json);
       } else {
         return ApiResponse(success: false, message: json['message']?.toString());
@@ -1305,6 +1305,99 @@ class ApiService {
   }
 
   static Future<ApiResponse<Map<String, dynamic>>> getStudentActiveLibrary() => getActiveLibraryDetails();
+
+  /// Get fee collection summary and list of all fee receipts
+  static Future<ApiResponse<Map<String, dynamic>>> getOwnerCollections() async {
+    try {
+      final token = await AuthStorage.getToken();
+      final uri = Uri.parse('${ApiConfig.baseUrl}/owner/collections');
+      final response = await http
+          .get(uri, headers: _buildHeaders(token: token))
+          .timeout(_timeout);
+
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 200) {
+        return ApiResponse(success: true, data: json);
+      } else {
+        return ApiResponse(success: false, message: json['message']?.toString());
+      }
+    } catch (e) {
+      return ApiResponse(success: false, message: _formatNetworkError(e));
+    }
+  }
+
+  /// Record offline fee collection from student
+  static Future<ApiResponse<Map<String, dynamic>>> recordFeeCollection({
+    required String studentId,
+    String? membershipId,
+    required num originalAmount,
+    required num collectedAmount,
+    required String collectionDate, // 'YYYY-MM-DD'
+    String paymentMode = 'CASH',
+    String? remarks,
+  }) async {
+    try {
+      final token = await AuthStorage.getToken();
+      final uri = Uri.parse('${ApiConfig.baseUrl}/owner/collections');
+      final response = await http
+          .post(
+            uri,
+            headers: _buildHeaders(token: token),
+            body: jsonEncode({
+              'studentId': studentId,
+              if (membershipId != null) 'membershipId': membershipId,
+              'originalAmount': originalAmount,
+              'collectedAmount': collectedAmount,
+              'collectionDate': collectionDate,
+              'paymentMode': paymentMode,
+              if (remarks != null && remarks.isNotEmpty) 'remarks': remarks,
+            }),
+          )
+          .timeout(_timeout);
+
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return ApiResponse(success: true, data: json['data'] as Map<String, dynamic>? ?? json, message: json['message']?.toString() ?? 'Fee collection recorded successfully');
+      } else {
+        return ApiResponse(success: false, message: json['message']?.toString() ?? 'Failed to record collection');
+      }
+    } catch (e) {
+      return ApiResponse(success: false, message: _formatNetworkError(e));
+    }
+  }
+
+  /// Update fee collection amount and date only
+  static Future<ApiResponse<Map<String, dynamic>>> updateFeeCollection(
+    String collectionId, {
+    required num collectedAmount,
+    required String collectionDate, // 'YYYY-MM-DD'
+    String? remarks,
+  }) async {
+    try {
+      final token = await AuthStorage.getToken();
+      final uri = Uri.parse('${ApiConfig.baseUrl}/owner/collections/$collectionId');
+      final response = await http
+          .put(
+            uri,
+            headers: _buildHeaders(token: token),
+            body: jsonEncode({
+              'collectedAmount': collectedAmount,
+              'collectionDate': collectionDate,
+              if (remarks != null && remarks.isNotEmpty) 'remarks': remarks,
+            }),
+          )
+          .timeout(_timeout);
+
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 200) {
+        return ApiResponse(success: true, data: json['data'] as Map<String, dynamic>? ?? json, message: json['message']?.toString() ?? 'Fee collection updated successfully');
+      } else {
+        return ApiResponse(success: false, message: json['message']?.toString() ?? 'Failed to update collection');
+      }
+    } catch (e) {
+      return ApiResponse(success: false, message: _formatNetworkError(e));
+    }
+  }
 
   /// Logout from backend session
   static Future<void> logout() async {
