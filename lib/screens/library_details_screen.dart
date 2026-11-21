@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/library_business_model.dart';
 import '../models/library_facilities.dart';
+import '../services/api_config.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 
@@ -10,12 +11,14 @@ import '../theme/app_theme.dart';
 class LibraryDetailsScreen extends StatefulWidget {
   final String? libraryId;
   final LibraryBusinessModel? initialData;
+  final List<dynamic>? initialSeats;
   final bool isOwnerPreview;
 
   const LibraryDetailsScreen({
     super.key,
     this.libraryId,
     this.initialData,
+    this.initialSeats,
     this.isOwnerPreview = false,
   });
 
@@ -37,9 +40,45 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
   Map<String, dynamic>? _selectedSeatForDetails;
   bool _showAllSeats = false;
 
+  String? _resolvePhotoUrl(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    final trimmed = raw.trim();
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+    if (trimmed.startsWith('/')) {
+      final host = ApiConfig.baseUrl.replaceAll('/api/v1', '');
+      return '$host$trimmed';
+    }
+    return trimmed;
+  }
+
   @override
   void initState() {
     super.initState();
+    if (widget.initialSeats != null && widget.initialSeats!.isNotEmpty) {
+      _seatsList = List.from(widget.initialSeats!);
+      int occ = 0;
+      int res = 0;
+      int ava = 0;
+      for (final s in _seatsList) {
+        final st = (s is Map ? s['status'] : '')?.toString().toLowerCase() ?? '';
+        if (st.contains('occupied')) {
+          occ++;
+        } else if (st.contains('reserved')) {
+          res++;
+        } else {
+          ava++;
+        }
+      }
+      _seatsSummary = {
+        'totalSeats': _seatsList.length,
+        'availableSeats': ava,
+        'occupiedSeats': occ,
+        'reservedSeats': res,
+        'seats': _seatsList,
+      };
+    }
     if (widget.initialData != null) {
       _library = widget.initialData!;
     } else {
@@ -430,7 +469,7 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
               return InteractiveViewer(
                 child: Center(
                   child: Image.network(
-                    _library.photos[idx],
+                    _resolvePhotoUrl(_library.photos[idx]) ?? _library.photos[idx],
                     fit: BoxFit.contain,
                     errorBuilder: (_, __, ___) => const Center(
                       child: Icon(Icons.broken_image_rounded, color: Colors.white54, size: 48),
@@ -490,7 +529,7 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
                               child: Hero(
                                 tag: 'lib_photo_$idx',
                                 child: Image.network(
-                                  photos[idx],
+                                  _resolvePhotoUrl(photos[idx]) ?? photos[idx],
                                   fit: BoxFit.cover,
                                   width: double.infinity,
                                   errorBuilder: (_, __, ___) => Container(
@@ -1795,7 +1834,9 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
                     ),
                     itemBuilder: (ctx, idx) {
                       final seat = displaySeats[idx] as Map<String, dynamic>;
-                      final status = seat['status']?.toString() ?? 'AVAILABLE';
+                      final rawStatus = (seat['status']?.toString() ?? 'available').toLowerCase();
+                      final isOccupied = rawStatus.contains('occupied');
+                      final isReserved = rawStatus.contains('reserved');
                       final label = seat['label']?.toString() ?? 'D${idx + 1}';
                       final isSelected = _selectedSeatForDetails == seat;
 
@@ -1804,19 +1845,19 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
                       Color textCol;
                       IconData icon;
 
-                      if (status == 'OCCUPIED') {
-                        bg = isSelected ? AppColors.rose500 : AppColors.rose50;
-                        border = AppColors.rose400;
+                      if (isOccupied) {
+                        bg = isSelected ? AppColors.rose600 : AppColors.rose50;
+                        border = isSelected ? AppColors.slate900 : AppColors.rose400;
                         textCol = isSelected ? Colors.white : AppColors.rose700;
                         icon = Icons.person;
-                      } else if (status == 'RESERVED') {
-                        bg = isSelected ? AppColors.amber500 : AppColors.amber50;
-                        border = AppColors.amber400;
+                      } else if (isReserved) {
+                        bg = isSelected ? AppColors.amber600 : AppColors.amber50;
+                        border = isSelected ? AppColors.slate900 : AppColors.amber400;
                         textCol = isSelected ? Colors.white : AppColors.amber800;
                         icon = Icons.schedule;
                       } else {
                         bg = isSelected ? AppColors.emerald600 : AppColors.emerald50;
-                        border = AppColors.emerald400;
+                        border = isSelected ? AppColors.slate900 : AppColors.emerald400;
                         textCol = isSelected ? Colors.white : AppColors.emerald700;
                         icon = Icons.chair_rounded;
                       }
@@ -1912,79 +1953,129 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
                           ),
                         ],
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      child: Builder(
+                        builder: (context) {
+                          final seat = _selectedSeatForDetails!;
+                          final rawSt = (seat['status']?.toString() ?? 'available').toLowerCase();
+                          final bool isOcc = rawSt.contains('occupied');
+                          final bool isRes = rawSt.contains('reserved');
+                          final String statusText = isOcc ? 'OCCUPIED' : (isRes ? 'RESERVED' : 'AVAILABLE');
+                          final studentName = seat['studentName'] ?? seat['student'];
+                          final planName = seat['plan'];
+                          final validTill = seat['validTill'];
+                          final shiftTiming = seat['shiftTiming']?.toString();
+
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  const Icon(Icons.event_seat_rounded, size: 16, color: AppColors.slate800),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    _selectedSeatForDetails!['label']?.toString() ?? 'Desk',
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w900,
-                                      color: AppColors.slate900,
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        isOcc ? Icons.person_rounded : Icons.event_seat_rounded,
+                                        size: 16,
+                                        color: isOcc ? AppColors.rose600 : AppColors.slate800,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        seat['label']?.toString() ?? 'Desk',
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w900,
+                                          color: AppColors.slate900,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: isOcc
+                                          ? AppColors.rose100
+                                          : (isRes ? AppColors.amber100 : AppColors.emerald100),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      statusText,
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w900,
+                                        color: isOcc
+                                            ? AppColors.rose700
+                                            : (isRes ? AppColors.amber800 : AppColors.emerald700),
+                                      ),
                                     ),
                                   ),
                                 ],
                               ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: _selectedSeatForDetails!['status'] == 'OCCUPIED'
-                                      ? AppColors.rose100
-                                      : (_selectedSeatForDetails!['status'] == 'RESERVED'
-                                          ? AppColors.amber100
-                                          : AppColors.emerald100),
-                                  borderRadius: BorderRadius.circular(8),
+                              const SizedBox(height: 6),
+                              if (isOcc && studentName != null && studentName.toString().trim().isNotEmpty) ...[
+                                Row(
+                                  children: [
+                                    const Icon(Icons.person_outline_rounded, size: 13, color: AppColors.rose600),
+                                    const SizedBox(width: 4),
+                                    Expanded(
+                                      child: Text(
+                                        'Student: $studentName',
+                                        style: const TextStyle(
+                                          fontSize: 11.5,
+                                          fontWeight: FontWeight.w800,
+                                          color: AppColors.slate900,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                child: Text(
-                                  _selectedSeatForDetails!['status']?.toString() ?? 'AVAILABLE',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w900,
-                                    color: _selectedSeatForDetails!['status'] == 'OCCUPIED'
-                                        ? AppColors.rose700
-                                        : (_selectedSeatForDetails!['status'] == 'RESERVED'
-                                            ? AppColors.amber800
-                                            : AppColors.emerald700),
+                                const SizedBox(height: 4),
+                              ],
+                              Row(
+                                children: [
+                                  const Icon(Icons.access_time_rounded, size: 13, color: AppColors.slate500),
+                                  const SizedBox(width: 4),
+                                  Expanded(
+                                    child: Text(
+                                      isOcc
+                                          ? (shiftTiming != null && shiftTiming.isNotEmpty
+                                              ? 'Shift: $shiftTiming'
+                                              : 'Shift: Full Day Allotted')
+                                          : (isRes
+                                              ? (shiftTiming != null && shiftTiming.isNotEmpty
+                                                  ? 'Reserved for: $shiftTiming'
+                                                  : 'Admission Offer Pending')
+                                              : 'Vacant · Open for All Shifts (Full Day / Morning / Evening)'),
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.slate700,
+                                      ),
+                                    ),
                                   ),
-                                ),
+                                ],
                               ),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              const Icon(Icons.access_time_rounded, size: 13, color: AppColors.slate500),
-                              const SizedBox(width: 4),
-                              Expanded(
-                                child: Text(
-                                  _selectedSeatForDetails!['status'] == 'OCCUPIED'
-                                      ? (_selectedSeatForDetails!['shiftTiming'] != null &&
-                                              _selectedSeatForDetails!['shiftTiming'].toString().isNotEmpty
-                                          ? 'Shift: ${_selectedSeatForDetails!['shiftTiming']}'
-                                          : 'Shift: Full Day Allotted')
-                                      : (_selectedSeatForDetails!['status'] == 'RESERVED'
-                                          ? (_selectedSeatForDetails!['shiftTiming'] != null &&
-                                                  _selectedSeatForDetails!['shiftTiming'].toString().isNotEmpty
-                                              ? 'Reserved for: ${_selectedSeatForDetails!['shiftTiming']}'
-                                              : 'Admission Offer Pending')
-                                          : 'Vacant · Open for All Shifts (Full Day / Morning / Evening)'),
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppColors.slate700,
-                                  ),
+                              if (isOcc && (planName != null || validTill != null)) ...[
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.badge_outlined, size: 13, color: AppColors.slate500),
+                                    const SizedBox(width: 4),
+                                    Expanded(
+                                      child: Text(
+                                        'Plan: ${planName ?? "Dedicated Desk"}${validTill != null ? " · Till $validTill" : ""}',
+                                        style: const TextStyle(
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.slate600,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ),
+                              ],
                             ],
-                          ),
-                        ],
+                          );
+                        },
                       ),
                     ),
                   ],

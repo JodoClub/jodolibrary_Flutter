@@ -60,28 +60,7 @@ class _JodoRootFlowState extends State<JodoRootFlow> {
   UserRole? _role;
   String _phone = '9876543210';
 
-  List<ActivityItem> _partnerActivities = [
-    const ActivityItem(
-      icon: 'check',
-      title: 'Ananya checked in',
-      detail: 'Seat 24 · 9:42 AM',
-    ),
-    const ActivityItem(
-      icon: 'wallet',
-      title: 'Payment received',
-      detail: 'Rahul Kumar · ₹1,499',
-    ),
-    const ActivityItem(
-      icon: 'users',
-      title: 'New member joined',
-      detail: 'Priya Singh · UPSC',
-    ),
-    const ActivityItem(
-      icon: 'clock',
-      title: 'Plan renewal due',
-      detail: 'Vikram Raj · Tomorrow',
-    ),
-  ];
+  List<ActivityItem> _partnerActivities = [];
 
   @override
   void initState() {

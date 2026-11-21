@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/library_business_model.dart';
 import '../models/library_facilities.dart';
+import '../services/api_config.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common_widgets.dart';
@@ -100,6 +101,19 @@ class _OwnerBusinessProfileScreenState extends State<OwnerBusinessProfileScreen>
         'dining_area', 'newspapers', 'book_bank', 'washrooms', 'two_wheeler_parking',
       };
     }
+  }
+
+  String? _resolvePhotoUrl(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    final trimmed = raw.trim();
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+    if (trimmed.startsWith('/')) {
+      final host = ApiConfig.baseUrl.replaceAll('/api/v1', '');
+      return '$host$trimmed';
+    }
+    return trimmed;
   }
 
   @override
@@ -775,7 +789,7 @@ class _OwnerBusinessProfileScreenState extends State<OwnerBusinessProfileScreen>
                   ClipRRect(
                     borderRadius: BorderRadius.circular(14),
                     child: Image.network(
-                      _photos[idx],
+                      _resolvePhotoUrl(_photos[idx]) ?? _photos[idx],
                       fit: BoxFit.cover,
                       errorBuilder: (_, _, _) => Container(
                         color: AppColors.slate200,

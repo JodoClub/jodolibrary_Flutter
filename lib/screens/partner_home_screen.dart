@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/app_models.dart';
 import '../models/library_business_model.dart';
 import '../models/library_facilities.dart';
+import '../services/api_config.dart';
 import '../services/api_service.dart';
 import '../services/auth_storage.dart';
 import '../theme/app_theme.dart';
@@ -67,6 +68,7 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
   int _renewalsDueCount = 0;
   bool _loadingCollections = false;
   String _memberValidityFilter = 'all'; // 'all', 'due_soon', 'active'
+  int _feeCollectionTab = 0; // 0: All, 1: Active Members, 2: Removed Members
 
   @override
   void initState() {
@@ -187,12 +189,25 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
     }
   }
 
+  String? _resolvePhotoUrl(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    final trimmed = raw.trim();
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+    if (trimmed.startsWith('/')) {
+      final host = ApiConfig.baseUrl.replaceAll('/api/v1', '');
+      return '$host$trimmed';
+    }
+    return trimmed;
+  }
+
   Future<void> _loadProfileData() async {
     final stored = await AuthStorage.getStoredProfile();
     if (mounted) {
       setState(() {
         if (stored['ownerPhoto'] != null && stored['ownerPhoto'].toString().trim().isNotEmpty) {
-          _ownerPhotoUrl = stored['ownerPhoto'].toString().trim();
+          _ownerPhotoUrl = _resolvePhotoUrl(stored['ownerPhoto'].toString().trim());
         }
         if (stored['name'] != null && stored['name'].toString().trim().isNotEmpty) {
           _ownerName = stored['name'].toString().trim();
@@ -222,11 +237,11 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
         final profile = res.data!['profile'] as Map<String, dynamic>?;
         setState(() {
           if (user?['avatarUrl'] != null && user!['avatarUrl'].toString().trim().isNotEmpty) {
-            _ownerPhotoUrl = user['avatarUrl'].toString().trim();
+            _ownerPhotoUrl = _resolvePhotoUrl(user['avatarUrl'].toString().trim());
           } else if (user?['photoUrl'] != null && user!['photoUrl'].toString().trim().isNotEmpty) {
-            _ownerPhotoUrl = user['photoUrl'].toString().trim();
+            _ownerPhotoUrl = _resolvePhotoUrl(user['photoUrl'].toString().trim());
           } else if (user?['avatar'] != null && user!['avatar'].toString().trim().isNotEmpty) {
-            _ownerPhotoUrl = user['avatar'].toString().trim();
+            _ownerPhotoUrl = _resolvePhotoUrl(user['avatar'].toString().trim());
           }
           if (user?['name'] != null && user!['name'].toString().trim().isNotEmpty) {
             _ownerName = user['name'].toString().trim();
@@ -360,6 +375,96 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
     }
   }
 
+  bool _isCollectionFromRemovedMember(FeeCollectionItem col) {
+    final removedIds = _removedMembers
+        .map((m) => m['studentId']?.toString())
+        .whereType<String>()
+        .toSet();
+    if (removedIds.contains(col.studentId)) return true;
+
+    final activeIds = _members
+        .map((m) => m.studentId)
+        .whereType<String>()
+        .toSet();
+    final activePhones = _members
+        .map((m) => m.phone.replaceAll(RegExp(r'\D'), ''))
+        .where((p) => p.isNotEmpty)
+        .toSet();
+    final colPhone = (col.studentPhone ?? '').replaceAll(RegExp(r'\D'), '');
+
+    if (activeIds.contains(col.studentId) || (colPhone.isNotEmpty && activePhones.contains(colPhone))) {
+      return false;
+    }
+
+    final removedPhones = _removedMembers
+        .map((m) => m['phone']?.toString().replaceAll(RegExp(r'\D'), ''))
+        .whereType<String>()
+        .where((p) => p.isNotEmpty)
+        .toSet();
+    if (colPhone.isNotEmpty && removedPhones.contains(colPhone)) return true;
+
+    return !activeIds.contains(col.studentId);
+  }
+
+  List<ActivityItem> _getRealActivities() {
+    final List<ActivityItem> list = [];
+
+    // 1. Real member attendance check-in / check-out
+    for (final m in _members) {
+      final st = m.status.toLowerCase();
+      if (st.contains('present')) {
+        list.add(ActivityItem(
+          icon: 'check',
+          title: '${m.name} checked in',
+          detail: '${m.seat} · ${m.checkInTime != null && m.checkInTime!.isNotEmpty ? m.checkInTime : "Active Inside"}',
+          isHighlight: true,
+        ));
+      } else if (st.contains('out') || st.contains('checked out')) {
+        list.add(ActivityItem(
+          icon: 'clock',
+          title: '${m.name} checked out',
+          detail: '${m.seat} · Session completed',
+        ));
+      } else if (m.startDate != null && m.startDate!.isNotEmpty) {
+        list.add(ActivityItem(
+          icon: 'users',
+          title: 'Member enrolled: ${m.name}',
+          detail: '${m.seat} · ${m.plan}',
+        ));
+      }
+    }
+
+    // 2. Real fee collections
+    for (final col in _feeCollections.take(4)) {
+      list.add(ActivityItem(
+        icon: 'wallet',
+        title: 'Fee collected: ₹${col.collectedAmount.toInt()}',
+        detail: '${col.studentName} (${col.seatLabel ?? "Desk"}) · ${col.collectionDate}',
+      ));
+    }
+
+    // 3. Real renewal due alerts
+    for (final m in _members) {
+      if (m.isDueSoon || m.daysRemaining <= 5) {
+        list.add(ActivityItem(
+          icon: 'clock',
+          title: 'Plan renewal due',
+          detail: '${m.name} · ${m.daysRemaining} days remaining',
+        ));
+      }
+    }
+
+    // Add any non-dummy dynamic activities passed in
+    for (final act in widget.activities) {
+      final t = act.title.toLowerCase();
+      if (!t.contains('ananya') && !t.contains('rahul kumar') && !t.contains('priya singh') && !t.contains('vikram raj')) {
+        list.add(act);
+      }
+    }
+
+    return list;
+  }
+
   // ==========================================
   // TAB 1: OVERVIEW DASHBOARD
   // ==========================================
@@ -397,7 +502,7 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                         alignment: Alignment.center,
                         child: _ownerPhotoUrl != null && _ownerPhotoUrl!.isNotEmpty
                             ? Image.network(
-                                _ownerPhotoUrl!,
+                                _resolvePhotoUrl(_ownerPhotoUrl) ?? _ownerPhotoUrl!,
                                 fit: BoxFit.cover,
                                 width: 48,
                                 height: 48,
@@ -787,71 +892,106 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                     ),
                     const SizedBox(height: 14),
 
-                    ...widget.activities.take(5).map((act) {
-                      Color bg = AppColors.slate50;
-                      Color iconColor = AppColors.slate600;
-                      IconData iconData = Icons.schedule;
-
-                      if (act.icon == 'check') {
-                        bg = AppColors.emerald50;
-                        iconColor = AppColors.emerald600;
-                        iconData = Icons.check_circle_outline;
-                      } else if (act.icon == 'wallet') {
-                        bg = AppColors.indigo50;
-                        iconColor = AppColors.indigo950;
-                        iconData = Icons.account_balance_wallet_outlined;
-                      } else if (act.icon == 'users') {
-                        bg = AppColors.orange50;
-                        iconColor = AppColors.orange600;
-                        iconData = Icons.person_add_outlined;
-                      }
-
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: act.isHighlight ? AppColors.emerald50 : AppColors.slate50,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: act.isHighlight ? AppColors.emerald400 : AppColors.slate100,
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 36,
-                              height: 36,
-                              decoration: BoxDecoration(
-                                color: bg,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              alignment: Alignment.center,
-                              child: Icon(iconData, size: 18, color: iconColor),
+                    Builder(
+                      builder: (context) {
+                        final realActivities = _getRealActivities();
+                        if (realActivities.isEmpty) {
+                          return Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                            decoration: BoxDecoration(
+                              color: AppColors.slate50,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: AppColors.slate100),
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                            child: Column(
+                              children: const [
+                                Icon(Icons.history_rounded, size: 30, color: AppColors.slate400),
+                                SizedBox(height: 8),
+                                Text(
+                                  'No recent activity yet',
+                                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.slate700),
+                                ),
+                                SizedBox(height: 4),
+                                Text(
+                                  'Student check-ins, check-outs, and fee collections will appear here in real-time.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(fontSize: 11, color: AppColors.slate400),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+
+                        return Column(
+                          children: realActivities.take(5).map((act) {
+                            Color bg = AppColors.slate50;
+                            Color iconColor = AppColors.slate600;
+                            IconData iconData = Icons.schedule;
+
+                            if (act.icon == 'check') {
+                              bg = AppColors.emerald50;
+                              iconColor = AppColors.emerald600;
+                              iconData = Icons.check_circle_outline;
+                            } else if (act.icon == 'wallet') {
+                              bg = AppColors.indigo50;
+                              iconColor = AppColors.indigo950;
+                              iconData = Icons.account_balance_wallet_outlined;
+                            } else if (act.icon == 'users') {
+                              bg = AppColors.orange50;
+                              iconColor = AppColors.orange600;
+                              iconData = Icons.person_add_outlined;
+                            }
+
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: act.isHighlight ? AppColors.emerald50 : AppColors.slate50,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: act.isHighlight ? AppColors.emerald400 : AppColors.slate100,
+                                ),
+                              ),
+                              child: Row(
                                 children: [
-                                  Text(
-                                    act.title,
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w900,
-                                      color: AppColors.slate900,
+                                  Container(
+                                    width: 36,
+                                    height: 36,
+                                    decoration: BoxDecoration(
+                                      color: bg,
+                                      borderRadius: BorderRadius.circular(10),
                                     ),
+                                    alignment: Alignment.center,
+                                    child: Icon(iconData, size: 18, color: iconColor),
                                   ),
-                                  Text(
-                                    act.detail,
-                                    style: const TextStyle(fontSize: 10, color: AppColors.slate400),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          act.title,
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w900,
+                                            color: AppColors.slate900,
+                                          ),
+                                        ),
+                                        Text(
+                                          act.detail,
+                                          style: const TextStyle(fontSize: 10, color: AppColors.slate400),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ],
                               ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }),
+                            );
+                          }).toList(),
+                        );
+                      },
+                    ),
                   ],
                 ),
               ),
@@ -1811,37 +1951,19 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                       color: Colors.white,
                     ),
                   ),
-                  Row(
-                    children: [
-                      OutlinedButton.icon(
-                        onPressed: () => _openStandeeQRModal(),
-                        icon: const Icon(Icons.qr_code_2_rounded, size: 14, color: Colors.white),
-                        label: const Text(
-                          'Attendance QR',
-                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 11),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: Colors.white38),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      ElevatedButton.icon(
-                        onPressed: () => _openAddMemberModal(),
-                        icon: const Icon(Icons.add, size: 14, color: Colors.white),
-                        label: const Text(
-                          'Add',
-                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 11),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.orange500,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                          elevation: 0,
-                        ),
-                      ),
-                    ],
+                  ElevatedButton.icon(
+                    onPressed: () => _openAddMemberModal(),
+                    icon: const Icon(Icons.add, size: 14, color: Colors.white),
+                    label: const Text(
+                      'Add',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 11),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.orange500,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      elevation: 0,
+                    ),
                   ),
                 ],
               ),
@@ -2996,63 +3118,9 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
       children: [
         Container(
           width: double.infinity,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Color(0xFF0F172A), // Slate 900
-                Color(0xFF1E1B4B), // Deep Indigo 950
-                Color(0xFF1E3A8A), // Sapphire Blue 900
-              ],
-            ),
-            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(28)),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF0F172A).withValues(alpha: 0.35),
-                blurRadius: 18,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
-          clipBehavior: Clip.antiAlias,
+          color: AppColors.indigo950,
           child: Stack(
             children: [
-              // Modern glowing luminous accents
-              Positioned(
-                right: -40,
-                top: -30,
-                child: Container(
-                  width: 160,
-                  height: 160,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: RadialGradient(
-                      colors: [
-                        AppColors.orange500.withValues(alpha: 0.18),
-                        Colors.transparent,
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              Positioned(
-                left: -30,
-                bottom: -40,
-                child: Container(
-                  width: 140,
-                  height: 140,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: RadialGradient(
-                      colors: [
-                        AppColors.primary.withValues(alpha: 0.25),
-                        Colors.transparent,
-                      ],
-                    ),
-                  ),
-                ),
-              ),
               // Subtle Partner Badge on Top Right
               Positioned(
                 top: 14,
@@ -3110,7 +3178,7 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                       alignment: Alignment.center,
                       child: _ownerPhotoUrl != null && _ownerPhotoUrl!.isNotEmpty
                           ? Image.network(
-                              _ownerPhotoUrl!,
+                              _resolvePhotoUrl(_ownerPhotoUrl) ?? _ownerPhotoUrl!,
                               fit: BoxFit.cover,
                               width: 62,
                               height: 62,
@@ -3438,7 +3506,7 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                                   )
                                 : (tempPhotoUrl != null && tempPhotoUrl!.isNotEmpty
                                     ? Image.network(
-                                        tempPhotoUrl!,
+                                        _resolvePhotoUrl(tempPhotoUrl) ?? tempPhotoUrl!,
                                         fit: BoxFit.cover,
                                         width: 90,
                                         height: 90,
@@ -3612,7 +3680,7 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                                         setState(() {
                                           _ownerName = newName;
                                           if (tempPhotoUrl != null) {
-                                            _ownerPhotoUrl = tempPhotoUrl;
+                                            _ownerPhotoUrl = _resolvePhotoUrl(tempPhotoUrl);
                                           }
                                         });
                                       }
@@ -3704,8 +3772,15 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
   }
 
   void _openStudentPreview() {
+    final String libId = (_businessProfile?.id != null &&
+            _businessProfile!.id.isNotEmpty &&
+            _businessProfile!.id != 'owner-lib')
+        ? _businessProfile!.id
+        : '39051c53-663d-40e0-85b5-8894539d3328';
+
     final profile = (_businessProfile != null)
         ? _businessProfile!.copyWith(
+            id: libId,
             totalSeats: _totalSeats,
             name: _libraryName,
             address: _address,
@@ -3713,7 +3788,7 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
             contactPhone: _ownerPhone,
           )
         : LibraryBusinessModel(
-            id: 'owner-lib',
+            id: libId,
             name: _libraryName,
             address: _address,
             city: _city,
@@ -3721,22 +3796,32 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
             contactPhone: _ownerPhone,
           );
 
-    final String libId = (_businessProfile?.id != null &&
-            _businessProfile!.id.isNotEmpty &&
-            _businessProfile!.id != 'owner-lib')
-        ? _businessProfile!.id
-        : '';
+    final initialSeatsList = _floorMapSeats.map((s) => {
+      'seatNumber': s.number,
+      'label': 'Seat #${s.number}',
+      'status': s.status.toLowerCase().contains('occupied')
+          ? 'occupied'
+          : (s.status.toLowerCase().contains('reserved') ? 'reserved' : 'available'),
+      'studentName': s.student.isNotEmpty && s.student != 'Available' && s.student != '-' ? s.student : null,
+      'plan': s.plan.isNotEmpty && s.plan != '-' ? s.plan : null,
+      'validTill': s.validTill.isNotEmpty && s.validTill != '-' ? s.validTill : null,
+      'shiftTiming': s.shiftTiming ?? 'Full Day (08:00 AM - 08:00 PM)',
+    }).toList();
 
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => LibraryDetailsScreen(
-          libraryId: libId.isNotEmpty ? libId : null,
+          libraryId: libId,
           initialData: profile,
+          initialSeats: initialSeatsList.isNotEmpty ? initialSeatsList : null,
           isOwnerPreview: true,
         ),
       ),
-    );
+    ).then((_) {
+      _loadFloorMapData();
+      _loadMembersData();
+    });
   }
 
   Widget _buildUnifiedLibrarySection() {
@@ -3801,7 +3886,7 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                           child: Stack(
                             children: [
                               Image.network(
-                                photos[i],
+                                _resolvePhotoUrl(photos[i]) ?? photos[i],
                                 width: 220,
                                 height: 136,
                                 fit: BoxFit.cover,
@@ -5641,6 +5726,16 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
   }
 
   Widget _buildFeeCollectionsSection() {
+    final activeCols = _feeCollections.where((c) => !_isCollectionFromRemovedMember(c)).toList();
+    final removedCols = _feeCollections.where((c) => _isCollectionFromRemovedMember(c)).toList();
+
+    final double activeTotal = activeCols.fold(0.0, (sum, c) => sum + c.collectedAmount);
+    final double removedTotal = removedCols.fold(0.0, (sum, c) => sum + c.collectedAmount);
+
+    final displayedCols = _feeCollectionTab == 1
+        ? activeCols
+        : (_feeCollectionTab == 2 ? removedCols : _feeCollections);
+
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -5713,7 +5808,105 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
           ),
           const SizedBox(height: 14),
 
-          if (_feeCollections.isEmpty)
+          // Sub-totals for Active vs Removed Member Collections
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.slate50,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.slate200),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: const [
+                          Icon(Icons.check_circle_rounded, size: 12, color: AppColors.emerald600),
+                          SizedBox(width: 4),
+                          Text(
+                            'Active Members',
+                            style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: AppColors.slate600),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '₹${activeTotal.toInt()}',
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: AppColors.emerald700),
+                      ),
+                      Text(
+                        '${activeCols.length} receipts',
+                        style: const TextStyle(fontSize: 9.5, color: AppColors.slate400),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(width: 1, height: 36, color: AppColors.slate200),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: const [
+                          Icon(Icons.person_off_rounded, size: 12, color: AppColors.slate500),
+                          SizedBox(width: 4),
+                          Text(
+                            'Removed Members',
+                            style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: AppColors.slate600),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '₹${removedTotal.toInt()}',
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: AppColors.slate700),
+                      ),
+                      Text(
+                        '${removedCols.length} receipts',
+                        style: const TextStyle(fontSize: 9.5, color: AppColors.slate400),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Filter Segment Buttons
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildCollectionFilterPill(
+                  title: 'All (${_feeCollections.length})',
+                  isSelected: _feeCollectionTab == 0,
+                  onTap: () => setState(() => _feeCollectionTab = 0),
+                ),
+                const SizedBox(width: 6),
+                _buildCollectionFilterPill(
+                  title: 'Active Members (${activeCols.length})',
+                  isSelected: _feeCollectionTab == 1,
+                  activeColor: AppColors.emerald600,
+                  onTap: () => setState(() => _feeCollectionTab = 1),
+                ),
+                const SizedBox(width: 6),
+                _buildCollectionFilterPill(
+                  title: 'Removed Members (${removedCols.length})',
+                  isSelected: _feeCollectionTab == 2,
+                  activeColor: AppColors.slate700,
+                  onTap: () => setState(() => _feeCollectionTab = 2),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          if (displayedCols.isEmpty)
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(20),
@@ -5723,24 +5916,31 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                 border: Border.all(color: AppColors.slate200),
               ),
               child: Column(
-                children: const [
-                  Icon(Icons.receipt_long_outlined, size: 32, color: AppColors.slate400),
-                  SizedBox(height: 8),
+                children: [
+                  const Icon(Icons.receipt_long_outlined, size: 32, color: AppColors.slate400),
+                  const SizedBox(height: 8),
                   Text(
-                    'No Fee Collections Yet',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.slate700),
+                    _feeCollectionTab == 1
+                        ? 'No Collections from Active Members'
+                        : (_feeCollectionTab == 2
+                            ? 'No Collections from Removed Members'
+                            : 'No Fee Collections Yet'),
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.slate700),
                   ),
-                  SizedBox(height: 4),
+                  const SizedBox(height: 4),
                   Text(
-                    'When you collect monthly fees from members using "Collect Due", receipts will be tracked here.',
+                    _feeCollectionTab == 2
+                        ? 'Collections from members who later left the library will appear here.'
+                        : 'When you collect monthly fees from members using "Collect Due", receipts will be tracked here.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 11, color: AppColors.slate400),
+                    style: const TextStyle(fontSize: 11, color: AppColors.slate400),
                   ),
                 ],
               ),
             )
           else
-            ..._feeCollections.map((col) {
+            ...displayedCols.map((col) {
+              final isRemoved = _isCollectionFromRemovedMember(col);
               return Container(
                 margin: const EdgeInsets.only(bottom: 10),
                 padding: const EdgeInsets.all(14),
@@ -5756,12 +5956,16 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                       width: 40,
                       height: 40,
                       decoration: BoxDecoration(
-                        color: AppColors.emerald50,
+                        color: isRemoved ? AppColors.slate200 : AppColors.emerald50,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppColors.emerald200),
+                        border: Border.all(color: isRemoved ? AppColors.slate300 : AppColors.emerald200),
                       ),
                       alignment: Alignment.center,
-                      child: const Icon(Icons.receipt_rounded, size: 20, color: AppColors.emerald600),
+                      child: Icon(
+                        isRemoved ? Icons.person_off_rounded : Icons.receipt_rounded,
+                        size: 20,
+                        color: isRemoved ? AppColors.slate600 : AppColors.emerald600,
+                      ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -5772,22 +5976,44 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Expanded(
-                                child: Text(
-                                  col.studentName,
-                                  style: const TextStyle(
-                                    fontSize: 13.5,
-                                    fontWeight: FontWeight.w900,
-                                    color: AppColors.slate900,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
+                                child: Row(
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        col.studentName,
+                                        style: const TextStyle(
+                                          fontSize: 13.5,
+                                          fontWeight: FontWeight.w900,
+                                          color: AppColors.slate900,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                      decoration: BoxDecoration(
+                                        color: isRemoved ? AppColors.slate200 : AppColors.emerald50,
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        isRemoved ? 'Removed' : 'Active',
+                                        style: TextStyle(
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.w800,
+                                          color: isRemoved ? AppColors.slate600 : AppColors.emerald700,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                               Text(
                                 '₹${col.collectedAmount.toInt()}',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w900,
-                                  color: AppColors.emerald700,
+                                  color: isRemoved ? AppColors.slate700 : AppColors.emerald700,
                                 ),
                               ),
                             ],
@@ -5899,6 +6125,33 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
               );
             }),
         ],
+      ),
+    );
+  }
+
+  Widget _buildCollectionFilterPill({
+    required String title,
+    required bool isSelected,
+    required VoidCallback onTap,
+    Color activeColor = AppColors.orange500,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: isSelected ? activeColor : AppColors.slate100,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          title,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+            color: isSelected ? Colors.white : AppColors.slate700,
+          ),
+        ),
       ),
     );
   }
