@@ -376,34 +376,68 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
   }
 
   bool _isCollectionFromRemovedMember(FeeCollectionItem col) {
-    final removedIds = _removedMembers
-        .map((m) => m['studentId']?.toString())
-        .whereType<String>()
-        .toSet();
-    if (removedIds.contains(col.studentId)) return true;
+    // 1. Check if matches currently active member
+    final matchingActive = _members.where((m) {
+      if (m.studentId != null && m.studentId == col.studentId) return true;
+      final cleanMemberPhone = m.phone.replaceAll(RegExp(r'\D'), '');
+      final cleanColPhone = (col.studentPhone ?? '').replaceAll(RegExp(r'\D'), '');
+      if (cleanMemberPhone.isNotEmpty && cleanColPhone.isNotEmpty && cleanMemberPhone == cleanColPhone) {
+        return true;
+      }
+      return false;
+    }).toList();
 
-    final activeIds = _members
-        .map((m) => m.studentId)
-        .whereType<String>()
-        .toSet();
-    final activePhones = _members
-        .map((m) => m.phone.replaceAll(RegExp(r'\D'), ''))
-        .where((p) => p.isNotEmpty)
-        .toSet();
-    final colPhone = (col.studentPhone ?? '').replaceAll(RegExp(r'\D'), '');
+    // 2. Check if matches removed member record
+    final matchingRemoved = _removedMembers.where((rm) {
+      final sId = rm['studentId']?.toString();
+      if (sId != null && sId == col.studentId) return true;
+      final cleanRmPhone = (rm['phone']?.toString() ?? '').replaceAll(RegExp(r'\D'), '');
+      final cleanColPhone = (col.studentPhone ?? '').replaceAll(RegExp(r'\D'), '');
+      if (cleanRmPhone.isNotEmpty && cleanColPhone.isNotEmpty && cleanRmPhone == cleanColPhone) {
+        return true;
+      }
+      return false;
+    }).toList();
 
-    if (activeIds.contains(col.studentId) || (colPhone.isNotEmpty && activePhones.contains(colPhone))) {
+    if (matchingActive.isNotEmpty) {
+      final activeMember = matchingActive.first;
+      final colPlan = (col.planName ?? '').toLowerCase().trim();
+      final actPlan = activeMember.plan.toLowerCase().trim();
+      final colSeat = (col.seatLabel ?? '').toLowerCase().trim();
+      final actSeat = activeMember.seat.toLowerCase().trim();
+
+      // If matches active member's current seat and plan, it is definitively an Active Member collection
+      if (colPlan == actPlan && (colSeat == actSeat || actSeat.contains(colSeat) || colSeat.contains(actSeat))) {
+        return false;
+      }
+
+      // If student has previous removed records and this collection matches a removed plan/seat
+      if (matchingRemoved.isNotEmpty) {
+        final matchesRemoved = matchingRemoved.any((rm) {
+          final rmPlan = (rm['planName']?.toString() ?? '').toLowerCase().trim();
+          final rmSeat = (rm['seatLabel']?.toString() ?? '').toLowerCase().trim();
+          if (rmPlan.isNotEmpty && colPlan.isNotEmpty && rmPlan == colPlan && colPlan != actPlan) {
+            return true;
+          }
+          if (rmSeat.isNotEmpty && colSeat.isNotEmpty && rmSeat == colSeat && colSeat != actSeat) {
+            return true;
+          }
+          if (colSeat.isNotEmpty && actSeat.isNotEmpty && colSeat != actSeat) {
+            return true;
+          }
+          return false;
+        });
+        if (matchesRemoved) {
+          return true; // Belongs to previous removed membership
+        }
+      }
+
+      // Default for active student: Active
       return false;
     }
 
-    final removedPhones = _removedMembers
-        .map((m) => m['phone']?.toString().replaceAll(RegExp(r'\D'), ''))
-        .whereType<String>()
-        .where((p) => p.isNotEmpty)
-        .toSet();
-    if (colPhone.isNotEmpty && removedPhones.contains(colPhone)) return true;
-
-    return !activeIds.contains(col.studentId);
+    // If not in active members, it is removed
+    return true;
   }
 
   List<ActivityItem> _getRealActivities() {
@@ -698,17 +732,25 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                       Row(
                         children: [
                           Expanded(
-                            child: _buildOwnerStatCard(
-                              icon: Icons.account_balance_wallet,
-                              tag: _todayCollectedAmount > 0
-                                  ? '₹${_todayCollectedAmount.toInt()} today'
-                                  : '₹${_thisMonthCollectedAmount.toInt()} this month',
-                              tagColor: AppColors.emerald700,
-                              tagBg: AppColors.emerald50,
-                              label: 'TOTAL COLLECTION',
-                              val: '₹${_totalCollectedAmount.toInt()}',
-                              iconBg: AppColors.emerald50,
-                              iconColor: AppColors.emerald600,
+                            child: InkWell(
+                              onTap: () {
+                                setState(() {
+                                  _activeTab = PartnerTab.profile;
+                                });
+                              },
+                              borderRadius: BorderRadius.circular(20),
+                              child: _buildOwnerStatCard(
+                                icon: Icons.account_balance_wallet,
+                                tag: _todayCollectedAmount > 0
+                                    ? '₹${_todayCollectedAmount.toInt()} today'
+                                    : '₹${_thisMonthCollectedAmount.toInt()} this month',
+                                tagColor: AppColors.emerald700,
+                                tagBg: AppColors.emerald50,
+                                label: 'TOTAL COLLECTION',
+                                val: '₹${_totalCollectedAmount.toInt()}',
+                                iconBg: AppColors.emerald50,
+                                iconColor: AppColors.emerald600,
+                              ),
                             ),
                           ),
                           const SizedBox(width: 10),
@@ -995,10 +1037,6 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 18),
-
-              // Fee Collections & Total Collection Details Section
-              _buildFeeCollectionsSection(),
             ],
           ),
         ),
@@ -3278,38 +3316,7 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
               _buildUnifiedLibrarySection(),
               const SizedBox(height: 14),
 
-              InkWell(
-                borderRadius: BorderRadius.circular(20),
-                onTap: () => _openStandeeQRModal(),
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: AppColors.slate200),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: const [
-                      Row(
-                        children: [
-                          Icon(Icons.qr_code, color: AppColors.orange500, size: 20),
-                          SizedBox(width: 12),
-                          Text(
-                            'View & Print Attendance Standee QR',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.slate800,
-                            ),
-                          ),
-                        ],
-                      ),
-                      Icon(Icons.arrow_forward_ios, size: 14, color: AppColors.slate400),
-                    ],
-                  ),
-                ),
-              ),
+              _buildFeeCollectionsSection(),
               const SizedBox(height: 14),
 
               CustomButton(
@@ -5732,10 +5739,6 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
     final double activeTotal = activeCols.fold(0.0, (sum, c) => sum + c.collectedAmount);
     final double removedTotal = removedCols.fold(0.0, (sum, c) => sum + c.collectedAmount);
 
-    final displayedCols = _feeCollectionTab == 1
-        ? activeCols
-        : (_feeCollectionTab == 2 ? removedCols : _feeCollections);
-
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -5877,255 +5880,463 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
           ),
           const SizedBox(height: 12),
 
-          // Filter Segment Buttons
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _buildCollectionFilterPill(
-                  title: 'All (${_feeCollections.length})',
-                  isSelected: _feeCollectionTab == 0,
-                  onTap: () => setState(() => _feeCollectionTab = 0),
-                ),
-                const SizedBox(width: 6),
-                _buildCollectionFilterPill(
-                  title: 'Active Members (${activeCols.length})',
-                  isSelected: _feeCollectionTab == 1,
-                  activeColor: AppColors.emerald600,
-                  onTap: () => setState(() => _feeCollectionTab = 1),
-                ),
-                const SizedBox(width: 6),
-                _buildCollectionFilterPill(
-                  title: 'Removed Members (${removedCols.length})',
-                  isSelected: _feeCollectionTab == 2,
-                  activeColor: AppColors.slate700,
-                  onTap: () => setState(() => _feeCollectionTab = 2),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          if (displayedCols.isEmpty)
+          if (_feeCollections.isEmpty)
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: AppColors.slate50,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: AppColors.slate200),
               ),
               child: Column(
-                children: [
-                  const Icon(Icons.receipt_long_outlined, size: 32, color: AppColors.slate400),
-                  const SizedBox(height: 8),
+                children: const [
+                  Icon(Icons.receipt_long_outlined, size: 28, color: AppColors.slate400),
+                  SizedBox(height: 6),
                   Text(
-                    _feeCollectionTab == 1
-                        ? 'No Collections from Active Members'
-                        : (_feeCollectionTab == 2
-                            ? 'No Collections from Removed Members'
-                            : 'No Fee Collections Yet'),
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.slate700),
+                    'No Fee Collections Yet',
+                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: AppColors.slate700),
                   ),
-                  const SizedBox(height: 4),
+                  SizedBox(height: 2),
                   Text(
-                    _feeCollectionTab == 2
-                        ? 'Collections from members who later left the library will appear here.'
-                        : 'When you collect monthly fees from members using "Collect Due", receipts will be tracked here.',
+                    'Receipts collected from members will appear here.',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 11, color: AppColors.slate400),
+                    style: TextStyle(fontSize: 10.5, color: AppColors.slate400),
                   ),
                 ],
               ),
             )
-          else
-            ...displayedCols.map((col) {
-              final isRemoved = _isCollectionFromRemovedMember(col);
-              return Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.all(14),
+          else ...[
+            // Top 2 recent collection receipts as preview
+            ..._feeCollections.take(2).map((col) => _buildReceiptCard(col)),
+
+            const SizedBox(height: 4),
+
+            // "View All Available Collections" Interactive Button -> opens modal bottom sheet
+            InkWell(
+              onTap: () => _showAllFeeCollectionsModal(),
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
                   color: AppColors.slate50,
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: AppColors.slate200),
                 ),
                 child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: isRemoved ? AppColors.slate200 : AppColors.emerald50,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: isRemoved ? AppColors.slate300 : AppColors.emerald200),
-                      ),
-                      alignment: Alignment.center,
-                      child: Icon(
-                        isRemoved ? Icons.person_off_rounded : Icons.receipt_rounded,
-                        size: 20,
-                        color: isRemoved ? AppColors.slate600 : AppColors.emerald600,
-                      ),
+                    Row(
+                      children: [
+                        const Icon(Icons.receipt_long_rounded, size: 16, color: AppColors.primary),
+                        const SizedBox(width: 8),
+                        Text(
+                          'View All Available Collections (${_feeCollections.length})',
+                          style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: AppColors.primary),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 12),
+                    const Icon(Icons.arrow_forward_ios_rounded, size: 12, color: AppColors.slate400),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReceiptCard(FeeCollectionItem col) {
+    final isRemoved = _isCollectionFromRemovedMember(col);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.slate50,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.slate200),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: isRemoved ? AppColors.slate200 : AppColors.emerald50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: isRemoved ? AppColors.slate300 : AppColors.emerald200),
+            ),
+            alignment: Alignment.center,
+            child: Icon(
+              isRemoved ? Icons.person_off_rounded : Icons.receipt_rounded,
+              size: 20,
+              color: isRemoved ? AppColors.slate600 : AppColors.emerald600,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      child: Row(
                         children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Expanded(
-                                child: Row(
-                                  children: [
-                                    Flexible(
-                                      child: Text(
-                                        col.studentName,
-                                        style: const TextStyle(
-                                          fontSize: 13.5,
-                                          fontWeight: FontWeight.w900,
-                                          color: AppColors.slate900,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                                      decoration: BoxDecoration(
-                                        color: isRemoved ? AppColors.slate200 : AppColors.emerald50,
-                                        borderRadius: BorderRadius.circular(6),
-                                      ),
-                                      child: Text(
-                                        isRemoved ? 'Removed' : 'Active',
-                                        style: TextStyle(
-                                          fontSize: 9,
-                                          fontWeight: FontWeight.w800,
-                                          color: isRemoved ? AppColors.slate600 : AppColors.emerald700,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Text(
-                                '₹${col.collectedAmount.toInt()}',
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w900,
-                                  color: isRemoved ? AppColors.slate700 : AppColors.emerald700,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 3),
-                          Row(
-                            children: [
-                              Text(
-                                col.seatLabel ?? 'Desk',
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.indigo950,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              const Text('·', style: TextStyle(color: AppColors.slate400)),
-                              const SizedBox(width: 6),
-                              Text(
-                                '📅 ${col.collectionDate}',
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.slate600,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.indigo50,
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: Text(
-                                      col.paymentMode,
-                                      style: const TextStyle(
-                                        fontSize: 9.5,
-                                        fontWeight: FontWeight.w800,
-                                        color: AppColors.indigo950,
-                                      ),
-                                    ),
-                                  ),
-                                  if (col.originalAmount > col.collectedAmount) ...[
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      '(Orig: ₹${col.originalAmount.toInt()})',
-                                      style: const TextStyle(
-                                        fontSize: 10,
-                                        color: AppColors.slate400,
-                                        decoration: TextDecoration.lineThrough,
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                              // Edit Button (Amount and Date only - NO delete)
-                              InkWell(
-                                onTap: () => _openEditCollectionModal(col),
-                                borderRadius: BorderRadius.circular(8),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: AppColors.slate200),
-                                  ),
-                                  child: const Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.edit_outlined, size: 12, color: AppColors.slate600),
-                                      SizedBox(width: 4),
-                                      Text(
-                                        'Edit',
-                                        style: TextStyle(
-                                          fontSize: 10.5,
-                                          fontWeight: FontWeight.w800,
-                                          color: AppColors.slate700,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          if (col.remarks != null && col.remarks!.isNotEmpty) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              'Note: ${col.remarks!}',
+                          Flexible(
+                            child: Text(
+                              col.studentName,
                               style: const TextStyle(
-                                fontSize: 10,
-                                fontStyle: FontStyle.italic,
-                                color: AppColors.slate500,
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w900,
+                                color: AppColors.slate900,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: isRemoved ? AppColors.slate200 : AppColors.emerald50,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              isRemoved ? 'Removed' : 'Active',
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w800,
+                                color: isRemoved ? AppColors.slate600 : AppColors.emerald700,
                               ),
                             ),
-                          ],
+                          ),
                         ],
+                      ),
+                    ),
+                    Text(
+                      '₹${col.collectedAmount.toInt()}',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                        color: isRemoved ? AppColors.slate700 : AppColors.emerald700,
                       ),
                     ),
                   ],
                 ),
-              );
-            }),
+                const SizedBox(height: 3),
+                Row(
+                  children: [
+                    Text(
+                      col.seatLabel ?? 'Desk',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.indigo950,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const Text('·', style: TextStyle(color: AppColors.slate400)),
+                    const SizedBox(width: 6),
+                    Text(
+                      '📅 ${col.collectionDate}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.slate600,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppColors.indigo50,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            col.paymentMode,
+                            style: const TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.indigo950,
+                            ),
+                          ),
+                        ),
+                        if (col.originalAmount > col.collectedAmount) ...[
+                          const SizedBox(width: 6),
+                          Text(
+                            '(Orig: ₹${col.originalAmount.toInt()})',
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: AppColors.slate400,
+                              decoration: TextDecoration.lineThrough,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    // Edit Button (Amount and Date only - NO delete)
+                    InkWell(
+                      onTap: () => _openEditCollectionModal(col),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppColors.slate200),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.edit_outlined, size: 12, color: AppColors.slate600),
+                            SizedBox(width: 4),
+                            Text(
+                              'Edit',
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.slate700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (col.remarks != null && col.remarks!.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Note: ${col.remarks!}',
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontStyle: FontStyle.italic,
+                      color: AppColors.slate500,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
         ],
       ),
+    );
+  }
+
+  void _showAllFeeCollectionsModal() {
+    int localFilterTab = _feeCollectionTab;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (modalContext, setModalState) {
+            final activeCols = _feeCollections.where((c) => !_isCollectionFromRemovedMember(c)).toList();
+            final removedCols = _feeCollections.where((c) => _isCollectionFromRemovedMember(c)).toList();
+            final double activeTotal = activeCols.fold(0.0, (sum, c) => sum + c.collectedAmount);
+            final double removedTotal = removedCols.fold(0.0, (sum, c) => sum + c.collectedAmount);
+
+            final displayedCols = localFilterTab == 1
+                ? activeCols
+                : (localFilterTab == 2 ? removedCols : _feeCollections);
+
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.75,
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: AppColors.slate300,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Fee Collections',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.slate900,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Total ₹${_totalCollectedAmount.toInt()} · ${_feeCollections.length} Receipts Tracked',
+                            style: const TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.w700),
+                          ),
+                        ],
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        icon: const Icon(Icons.close_rounded, color: AppColors.slate500),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  const Divider(height: 1, color: AppColors.slate200),
+                  const SizedBox(height: 10),
+
+                  // Sub-totals for Active vs Removed Member Collections
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppColors.slate50,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppColors.slate200),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Row(
+                            children: [
+                              const Icon(Icons.check_circle_rounded, size: 14, color: AppColors.emerald600),
+                              const SizedBox(width: 6),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('Active Members', style: TextStyle(fontSize: 10, color: AppColors.slate500, fontWeight: FontWeight.w600)),
+                                  Text('₹${activeTotal.toInt()} (${activeCols.length})', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: AppColors.emerald700)),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(width: 1, height: 28, color: AppColors.slate200),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Row(
+                            children: [
+                              const Icon(Icons.person_off_rounded, size: 14, color: AppColors.slate500),
+                              const SizedBox(width: 6),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('Removed Members', style: TextStyle(fontSize: 10, color: AppColors.slate500, fontWeight: FontWeight.w600)),
+                                  Text('₹${removedTotal.toInt()} (${removedCols.length})', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: AppColors.slate700)),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Filter Segment Buttons
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        _buildCollectionFilterPill(
+                          title: 'All (${_feeCollections.length})',
+                          isSelected: localFilterTab == 0,
+                          onTap: () {
+                            setModalState(() => localFilterTab = 0);
+                            setState(() => _feeCollectionTab = 0);
+                          },
+                        ),
+                        const SizedBox(width: 6),
+                        _buildCollectionFilterPill(
+                          title: 'Active Members (${activeCols.length})',
+                          isSelected: localFilterTab == 1,
+                          activeColor: AppColors.emerald600,
+                          onTap: () {
+                            setModalState(() => localFilterTab = 1);
+                            setState(() => _feeCollectionTab = 1);
+                          },
+                        ),
+                        const SizedBox(width: 6),
+                        _buildCollectionFilterPill(
+                          title: 'Removed Members (${removedCols.length})',
+                          isSelected: localFilterTab == 2,
+                          activeColor: AppColors.slate700,
+                          onTap: () {
+                            setModalState(() => localFilterTab = 2);
+                            setState(() => _feeCollectionTab = 2);
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Scrollable List of Collections
+                  Expanded(
+                    child: displayedCols.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.receipt_long_outlined, size: 36, color: AppColors.slate400),
+                                const SizedBox(height: 8),
+                                Text(
+                                  localFilterTab == 1
+                                      ? 'No Collections from Active Members'
+                                      : (localFilterTab == 2
+                                          ? 'No Collections from Removed Members'
+                                          : 'No Fee Collections Yet'),
+                                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.slate700),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  localFilterTab == 2
+                                      ? 'Collections from members who later left the library will appear here.'
+                                      : 'Receipts collected from members will appear here.',
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(fontSize: 11, color: AppColors.slate400),
+                                ),
+                              ],
+                            ),
+                          )
+                        : ListView.builder(
+                            itemCount: displayedCols.length,
+                            itemBuilder: (context, idx) {
+                              final col = displayedCols[idx];
+                              return _buildReceiptCard(col);
+                            },
+                          ),
+                  ),
+                  const SizedBox(height: 10),
+                  CustomButton(
+                    label: 'Close',
+                    variant: ButtonVariant.ghost,
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 

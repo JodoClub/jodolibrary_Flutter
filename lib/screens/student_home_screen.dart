@@ -3460,7 +3460,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
                                     ),
                                   ),
                                   Text(
-                                    'Google Business Details',
+                                    'Library Details',
                                     style: TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w800,
