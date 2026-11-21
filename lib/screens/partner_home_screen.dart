@@ -81,6 +81,15 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
     _loadFloorMapData();
   }
 
+  Future<void> _refreshAllData() async {
+    await Future.wait([
+      _loadProfileData(),
+      _loadMembersData(),
+      _loadCollectionsData(),
+      _loadFloorMapData(),
+    ]);
+  }
+
   Future<void> _loadCollectionsData() async {
     if (!mounted) return;
     setState(() => _loadingCollections = true);
@@ -345,11 +354,16 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
       backgroundColor: AppColors.slate50,
       body: SafeArea(
         bottom: false,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.only(bottom: 24),
-          child: SizedBox(
-            width: double.infinity,
-            child: _buildCurrentTab(),
+        child: RefreshIndicator(
+          onRefresh: _refreshAllData,
+          color: AppColors.primary,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.only(bottom: 24),
+            child: SizedBox(
+              width: double.infinity,
+              child: _buildCurrentTab(),
+            ),
           ),
         ),
       ),
@@ -4347,7 +4361,21 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
   Widget _buildNavTab(PartnerTab tab, IconData icon, String label) {
     final isActive = _activeTab == tab;
     return InkWell(
-      onTap: () => setState(() => _activeTab = tab),
+      onTap: () {
+        setState(() => _activeTab = tab);
+        if (tab == PartnerTab.overview) {
+          _loadCollectionsData();
+          _loadMembersData();
+          _loadFloorMapData();
+        } else if (tab == PartnerTab.seats) {
+          _loadFloorMapData();
+        } else if (tab == PartnerTab.members) {
+          _loadMembersData();
+        } else if (tab == PartnerTab.profile) {
+          _loadCollectionsData();
+          _loadProfileData();
+        }
+      },
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
         child: Column(
