@@ -288,7 +288,7 @@ class ApiService {
         }
         return ApiResponse(success: true, data: json);
       } else {
-        if (response.statusCode == 401 || response.statusCode == 403 || response.statusCode == 404) {
+        if (response.statusCode == 401) {
           await AuthStorage.clearSession();
         }
         return ApiResponse(
@@ -429,9 +429,6 @@ class ApiService {
       if (response.statusCode == 200) {
         return ApiResponse(success: true, data: json);
       } else {
-        if (response.statusCode == 401 || response.statusCode == 403 || response.statusCode == 404) {
-          await AuthStorage.clearSession();
-        }
         return ApiResponse(
           success: false,
           code: json['code'] as String?,
@@ -490,9 +487,6 @@ class ApiService {
       if (response.statusCode == 200) {
         return ApiResponse(success: true, data: json);
       } else {
-        if (response.statusCode == 401 || response.statusCode == 403 || response.statusCode == 404) {
-          await AuthStorage.clearSession();
-        }
         return ApiResponse(
           success: false,
           code: json['code'] as String?,
@@ -526,9 +520,6 @@ class ApiService {
       if (response.statusCode == 200) {
         return ApiResponse(success: true, data: json);
       } else {
-        if (response.statusCode == 401 || response.statusCode == 403 || response.statusCode == 404) {
-          await AuthStorage.clearSession();
-        }
         return ApiResponse(
           success: false,
           code: json['code'] as String?,
@@ -553,9 +544,6 @@ class ApiService {
       if (response.statusCode == 200) {
         return ApiResponse(success: true, data: json);
       } else {
-        if (response.statusCode == 401 || response.statusCode == 403 || response.statusCode == 404) {
-          await AuthStorage.clearSession();
-        }
         return ApiResponse(
           success: false,
           code: json['code'] as String?,
@@ -594,9 +582,6 @@ class ApiService {
       if (response.statusCode == 200) {
         return ApiResponse(success: true, data: json);
       } else {
-        if (response.statusCode == 401 || response.statusCode == 403 || response.statusCode == 404) {
-          await AuthStorage.clearSession();
-        }
         return ApiResponse(
           success: false,
           code: json['code'] as String?,
@@ -625,9 +610,6 @@ class ApiService {
       if (response.statusCode == 200) {
         return ApiResponse(success: true, data: json);
       } else {
-        if (response.statusCode == 401 || response.statusCode == 403 || response.statusCode == 404) {
-          await AuthStorage.clearSession();
-        }
         return ApiResponse(
           success: false,
           code: json['code'] as String?,
@@ -654,9 +636,6 @@ class ApiService {
       if (response.statusCode == 200) {
         return ApiResponse(success: true, data: json);
       } else {
-        if (response.statusCode == 401 || response.statusCode == 403 || response.statusCode == 404) {
-          await AuthStorage.clearSession();
-        }
         return ApiResponse(
           success: false,
           code: json['code'] as String?,
@@ -684,9 +663,6 @@ class ApiService {
       if (response.statusCode == 200) {
         return ApiResponse(success: true, data: json);
       } else {
-        if (response.statusCode == 401 || response.statusCode == 403 || response.statusCode == 404) {
-          await AuthStorage.clearSession();
-        }
         return ApiResponse(
           success: false,
           code: json['code'] as String?,
@@ -933,9 +909,6 @@ class ApiService {
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return ApiResponse(success: true, data: json);
       } else {
-        if (response.statusCode == 401 || response.statusCode == 403 || response.statusCode == 404) {
-          await AuthStorage.clearSession();
-        }
         return ApiResponse(
           success: false,
           code: json['code'] as String?,
@@ -960,9 +933,6 @@ class ApiService {
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return ApiResponse(success: true, data: json);
       } else {
-        if (response.statusCode == 401 || response.statusCode == 403 || response.statusCode == 404) {
-          await AuthStorage.clearSession();
-        }
         return ApiResponse(
           success: false,
           code: json['code'] as String?,
@@ -1221,9 +1191,6 @@ class ApiService {
       if (response.statusCode == 200) {
         return ApiResponse(success: true, data: json);
       } else {
-        if (response.statusCode == 401 || response.statusCode == 403 || response.statusCode == 404) {
-          await AuthStorage.clearSession();
-        }
         return ApiResponse(
           success: false,
           code: json['code'] as String?,
@@ -1381,9 +1348,6 @@ class ApiService {
       if (response.statusCode == 200) {
         return ApiResponse(success: true, data: json);
       } else {
-        if (response.statusCode == 401 || response.statusCode == 403 || response.statusCode == 404) {
-          await AuthStorage.clearSession();
-        }
         return ApiResponse(
           success: false,
           code: json['code'] as String?,
@@ -1408,9 +1372,6 @@ class ApiService {
       if (response.statusCode == 200) {
         return ApiResponse(success: true, data: json);
       } else {
-        if (response.statusCode == 401 || response.statusCode == 403 || response.statusCode == 404) {
-          await AuthStorage.clearSession();
-        }
         return ApiResponse(
           success: false,
           code: json['code'] as String?,
@@ -1437,9 +1398,6 @@ class ApiService {
       if (response.statusCode == 200) {
         return ApiResponse(success: true, data: json);
       } else {
-        if (response.statusCode == 401 || response.statusCode == 403 || response.statusCode == 404) {
-          await AuthStorage.clearSession();
-        }
         return ApiResponse(
           success: false,
           code: json['code'] as String?,
