@@ -77,64 +77,91 @@ class _JodoRootFlowState extends State<JodoRootFlow> {
   }
 
   Future<void> _checkSavedSession() async {
-    final loggedIn = await AuthStorage.isLoggedIn();
-    if (!loggedIn) return;
-
-    final role = await AuthStorage.getRole();
-    final phone = await AuthStorage.getPhone();
-    if (role == null) return;
-
-    if (mounted) {
-      setState(() {
-        _role = role;
-        if (phone != null) _phone = phone;
-      });
-    }
-
-    // 1. Check local stored profile first
-    final storedProfile = await AuthStorage.getStoredProfile();
-    bool hasProfile = role == UserRole.admin
-        ? (storedProfile['libraryName'] != null && storedProfile['libraryName'].toString().trim().isNotEmpty)
-        : (storedProfile['name'] != null && storedProfile['name'].toString().trim().isNotEmpty);
-
-    if (hasProfile) {
+    // 0. Check and purge stale build cache on new APK installations
+    final cachePurged = await AuthStorage.checkAndMigrateBuildCache();
+    if (cachePurged) {
       if (mounted) {
         setState(() {
-          _currentScreen = role == UserRole.admin
-              ? AppScreen.partnerHome
-              : AppScreen.studentHome;
+          _role = null;
+          _currentScreen = AppScreen.welcome;
         });
       }
-      // Refresh profile data from backend
-      ApiService.getMe();
-    } else {
-      // 2. If local profile is empty, check backend before deciding screen
-      try {
-        final meRes = await ApiService.getMe();
-        if (meRes.success && meRes.data != null) {
-          final user = meRes.data!['user'] as Map<String, dynamic>?;
-          final profile = meRes.data!['profile'] as Map<String, dynamic>?;
-          final hasBackendProfile = role == UserRole.admin
-              ? (profile?['name'] != null && profile!['name'].toString().trim().isNotEmpty)
-              : (user?['name'] != null && user!['name'].toString().trim().isNotEmpty);
+      return;
+    }
 
-          if (hasBackendProfile) {
-            hasProfile = true;
-          }
+    final loggedIn = await AuthStorage.isLoggedIn();
+    if (!loggedIn) {
+      if (mounted) {
+        setState(() => _currentScreen = AppScreen.welcome);
+      }
+      return;
+    }
+
+    final role = await AuthStorage.getRole();
+    if (role == null) {
+      await AuthStorage.clearSession();
+      if (mounted) {
+        setState(() => _currentScreen = AppScreen.welcome);
+      }
+      return;
+    }
+
+    // 1. ALWAYS validate active session with backend first!
+    try {
+      final meRes = await ApiService.getMe();
+      if (!meRes.success || meRes.data == null) {
+        // Token invalid, expired, or database was wiped/user removed!
+        await AuthStorage.clearSession();
+        if (mounted) {
+          setState(() {
+            _role = null;
+            _currentScreen = AppScreen.welcome;
+          });
         }
-      } catch (_) {}
+        return;
+      }
+
+      // Valid session verified with live backend!
+      final user = meRes.data!['user'] as Map<String, dynamic>?;
+      final profile = meRes.data!['profile'] as Map<String, dynamic>?;
+      final phone = user?['phone'] ?? user?['mobile'] ?? await AuthStorage.getPhone();
+
+      bool hasProfile = role == UserRole.admin
+          ? (profile?['name'] != null && profile!['name'].toString().trim().isNotEmpty)
+          : (user?['name'] != null && user!['name'].toString().trim().isNotEmpty);
 
       if (mounted) {
         setState(() {
+          _role = role;
+          if (phone != null) _phone = phone.toString();
           if (hasProfile) {
             _currentScreen = role == UserRole.admin
                 ? AppScreen.partnerHome
                 : AppScreen.studentHome;
           } else {
-            // New user who entered mobile + OTP but closed before completing profile setup
+            // Logged in with OTP but profile setup not completed yet
             _currentScreen = role == UserRole.admin
                 ? AppScreen.ownerSetup
                 : AppScreen.studentSetup;
+          }
+        });
+      }
+    } catch (_) {
+      // Offline fallback: ONLY if network unreachable, check local profile
+      final storedProfile = await AuthStorage.getStoredProfile();
+      bool hasProfile = role == UserRole.admin
+          ? (storedProfile['libraryName'] != null && storedProfile['libraryName'].toString().trim().isNotEmpty)
+          : (storedProfile['name'] != null && storedProfile['name'].toString().trim().isNotEmpty);
+
+      if (mounted) {
+        setState(() {
+          if (hasProfile) {
+            _role = role;
+            _currentScreen = role == UserRole.admin
+                ? AppScreen.partnerHome
+                : AppScreen.studentHome;
+          } else {
+            _currentScreen = AppScreen.welcome;
           }
         });
       }

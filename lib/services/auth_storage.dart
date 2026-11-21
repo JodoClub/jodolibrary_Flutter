@@ -18,6 +18,20 @@ class AuthStorage {
   static const String _keyStudentCode = 'jodo_student_code';
   static const String _keyDob = 'jodo_dob';
   static const String _keyOwnerPhoto = 'jodo_owner_photo';
+  static const String _keyAppBuild = 'jodo_app_installed_build';
+  static const String currentAppBuild = 'v2_clean_release';
+
+  /// Ensures old stale cache from prior APK versions is purged on first run of a new APK build
+  static Future<bool> checkAndMigrateBuildCache() async {
+    final prefs = await SharedPreferences.getInstance();
+    final installedBuild = prefs.getString(_keyAppBuild);
+    if (installedBuild != currentAppBuild) {
+      await prefs.clear();
+      await prefs.setString(_keyAppBuild, currentAppBuild);
+      return true; // cache was purged
+    }
+    return false;
+  }
 
   static Future<void> saveSession({
     required String token,
@@ -128,20 +142,10 @@ class AuthStorage {
 
   static Future<void> clearSession() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_keyToken);
-    await prefs.remove(_keyRole);
-    await prefs.remove(_keyPhone);
-    await prefs.remove(_keyUserId);
-    await prefs.remove(_keyUserName);
-    await prefs.remove(_keyLibraryName);
-    await prefs.remove(_keyAddress);
-    await prefs.remove(_keyCity);
-    await prefs.remove(_keyTotalSeats);
-    await prefs.remove(_keyExamCategory);
-    await prefs.remove(_keyEmergencyContact);
-    await prefs.remove(_keyGender);
-    await prefs.remove(_keyStudentCode);
-    await prefs.remove(_keyDob);
-    await prefs.remove(_keyOwnerPhoto);
+    final build = prefs.getString(_keyAppBuild);
+    await prefs.clear();
+    if (build != null) {
+      await prefs.setString(_keyAppBuild, build);
+    }
   }
 }

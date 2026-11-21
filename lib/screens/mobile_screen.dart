@@ -159,13 +159,17 @@ class _MobileScreenState extends State<MobileScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: Column(
-          children: [
-            BackBar(onBack: widget.onBack, step: 'Step 1 of 2'),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                child: Column(
+        child: GestureDetector(
+          onTap: () => FocusScope.of(context).unfocus(),
+          behavior: HitTestBehavior.opaque,
+          child: Column(
+            children: [
+              BackBar(onBack: widget.onBack, step: 'Step 1 of 2'),
+              Expanded(
+                child: SingleChildScrollView(
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const BrandLogo(height: 38),
@@ -259,6 +263,12 @@ class _MobileScreenState extends State<MobileScreen> {
                               controller: _phoneController,
                               autofocus: true,
                               keyboardType: TextInputType.phone,
+                              textInputAction: TextInputAction.done,
+                              onSubmitted: (_) {
+                                if (_phoneController.text.length == 10) {
+                                  _handleGetOtp();
+                                }
+                              },
                               inputFormatters: [
                                 FilteringTextInputFormatter.digitsOnly,
                                 LengthLimitingTextInputFormatter(10),
@@ -490,8 +500,9 @@ class _MobileScreenState extends State<MobileScreen> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   void _showTermsModal(BuildContext context) {
     showModalBottomSheet(

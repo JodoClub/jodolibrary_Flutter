@@ -1,0 +1,59 @@
+appId: com.example.jodo_library
+---
+# ==============================================================
+# Jodo Library - Automated Owner Flow (Maestro E2E Test)
+# Tests: Launch -> Mobile OTP -> Setup -> Dashboard -> Dynamic QR
+# ==============================================================
+
+- launchApp:
+    clearState: true
+
+# 1. Welcome Screen
+- assertVisible: "Study spaces,"
+- assertVisible: "Library Owner Login / Signup"
+- tapOn: "Library Owner Login / Signup"
+
+# 2. Mobile Number Screen
+- assertVisible: "What's your"
+- tapOn: "98765 43210"
+- inputText: "9812345678"
+- hideKeyboard
+- tapOn: "Get OTP"
+
+# 3. OTP Verification Screen
+- assertVisible: "Verify your number"
+- assertVisible: "Auto-fill 4321"
+- tapOn: "Auto-fill 4321"
+- tapOn: "Verify & Continue"
+
+# 4. Library Owner Setup Screen
+- assertVisible: "Set up your library"
+- tapOn: "e.g. Rajesh Kumar"
+- inputText: "Aarav Sharma"
+- hideKeyboard
+- tapOn: "e.g. Saraswati Study Hub"
+- inputText: "Zenith Study Point"
+- hideKeyboard
+- tapOn: "e.g. 2nd Floor, Boring Road, Patna"
+- inputText: "4th Floor Boring Road Patna"
+- hideKeyboard
+- scroll
+- tapOn: "Complete Setup"
+
+# 5. Owner Dashboard Verification
+- assertVisible: "OWNER PORTAL"
+- assertVisible: "Zenith Study Point"
+- assertVisible: "Attendance QR"
+
+# 6. Dynamic Rolling Attendance QR Verification
+- tapOn: "Attendance QR"
+- assertVisible: "Dynamic Attendance"
+- assertVisible: "Expires in"
+- assertVisible: "Passcode"
+- tapOn: "Close"
+
+# 7. Owner Profile & Logout Test
+- tapOn: "Profile"
+- assertVisible: "Log out / Switch Account"
+- tapOn: "Log out / Switch Account"
+- assertVisible: "Study spaces,"

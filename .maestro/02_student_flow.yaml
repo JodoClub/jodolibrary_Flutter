@@ -1,0 +1,62 @@
+appId: com.example.jodo_library
+---
+# ==============================================================
+# Jodo Library - Automated Student Flow (Maestro E2E Test)
+# Tests: Launch -> Mobile OTP -> Setup -> Home -> Explore -> Scanner
+# ==============================================================
+
+- launchApp:
+    clearState: true
+
+# 1. Welcome Screen
+- assertVisible: "Study spaces,"
+- assertVisible: "Student Login / Signup"
+- tapOn: "Student Login / Signup"
+
+# 2. Mobile Number Screen
+- assertVisible: "What's your"
+- tapOn: "98765 43210"
+- inputText: "9876543210"
+- hideKeyboard
+- tapOn: "Get OTP"
+
+# 3. OTP Verification Screen
+- assertVisible: "Verify your number"
+- assertVisible: "Auto-fill 4321"
+- tapOn: "Auto-fill 4321"
+- tapOn: "Verify & Continue"
+
+# 4. Student Setup Screen
+- assertVisible: "Tell us about you"
+- tapOn: "e.g. Aarav Kumar"
+- inputText: "Rohit Kumar"
+- hideKeyboard
+- scroll
+- tapOn: "98765 43210"
+- inputText: "9876500000"
+- hideKeyboard
+- scroll
+- tapOn: "Save & Continue"
+
+# 5. Student Dashboard Verification
+- assertVisible: "Attendance"
+- assertVisible: "Productivity"
+
+# 6. Explore Tab Verification
+- tapOn: "Explore"
+- assertVisible: "Other Library spaces"
+
+# 7. Attendance Scanner Modal Verification
+- tapOn: "Home"
+- tapOn: "Scan Attendance QR"
+- assertVisible: "Enter Passcode"
+- tapOn: "Enter Passcode"
+- assertVisible: "Enter the 6-digit dynamic passcode"
+- tapOn: "Cancel"
+
+# 8. Student Profile & Logout Test
+- tapOn: "Profile"
+- scroll
+- assertVisible: "Log out"
+- tapOn: "Log out"
+- assertVisible: "Study spaces,"

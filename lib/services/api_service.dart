@@ -288,7 +288,14 @@ class ApiService {
         }
         return ApiResponse(success: true, data: json);
       } else {
-        return ApiResponse(success: false, message: json['message']?.toString());
+        if (response.statusCode == 401 || response.statusCode == 403 || response.statusCode == 404) {
+          await AuthStorage.clearSession();
+        }
+        return ApiResponse(
+          success: false,
+          code: json['code'] as String?,
+          message: json['message']?.toString(),
+        );
       }
     } catch (e) {
       return ApiResponse(success: false, message: _formatNetworkError(e));
@@ -422,7 +429,14 @@ class ApiService {
       if (response.statusCode == 200) {
         return ApiResponse(success: true, data: json);
       } else {
-        return ApiResponse(success: false, message: json['message']?.toString());
+        if (response.statusCode == 401 || response.statusCode == 403 || response.statusCode == 404) {
+          await AuthStorage.clearSession();
+        }
+        return ApiResponse(
+          success: false,
+          code: json['code'] as String?,
+          message: json['message']?.toString(),
+        );
       }
     } catch (e) {
       return ApiResponse(success: false, message: _formatNetworkError(e));
@@ -476,7 +490,14 @@ class ApiService {
       if (response.statusCode == 200) {
         return ApiResponse(success: true, data: json);
       } else {
-        return ApiResponse(success: false, message: json['message']?.toString());
+        if (response.statusCode == 401 || response.statusCode == 403 || response.statusCode == 404) {
+          await AuthStorage.clearSession();
+        }
+        return ApiResponse(
+          success: false,
+          code: json['code'] as String?,
+          message: json['message']?.toString(),
+        );
       }
     } catch (e) {
       return ApiResponse(success: false, message: _formatNetworkError(e));
@@ -505,7 +526,14 @@ class ApiService {
       if (response.statusCode == 200) {
         return ApiResponse(success: true, data: json);
       } else {
-        return ApiResponse(success: false, message: json['message']?.toString());
+        if (response.statusCode == 401 || response.statusCode == 403 || response.statusCode == 404) {
+          await AuthStorage.clearSession();
+        }
+        return ApiResponse(
+          success: false,
+          code: json['code'] as String?,
+          message: json['message']?.toString(),
+        );
       }
     } catch (e) {
       return ApiResponse(success: false, message: _formatNetworkError(e));
@@ -525,7 +553,14 @@ class ApiService {
       if (response.statusCode == 200) {
         return ApiResponse(success: true, data: json);
       } else {
-        return ApiResponse(success: false, message: json['message']?.toString());
+        if (response.statusCode == 401 || response.statusCode == 403 || response.statusCode == 404) {
+          await AuthStorage.clearSession();
+        }
+        return ApiResponse(
+          success: false,
+          code: json['code'] as String?,
+          message: json['message']?.toString(),
+        );
       }
     } catch (e) {
       return ApiResponse(success: false, message: _formatNetworkError(e));
@@ -559,7 +594,14 @@ class ApiService {
       if (response.statusCode == 200) {
         return ApiResponse(success: true, data: json);
       } else {
-        return ApiResponse(success: false, message: json['message']?.toString());
+        if (response.statusCode == 401 || response.statusCode == 403 || response.statusCode == 404) {
+          await AuthStorage.clearSession();
+        }
+        return ApiResponse(
+          success: false,
+          code: json['code'] as String?,
+          message: json['message']?.toString(),
+        );
       }
     } catch (e) {
       return ApiResponse(success: false, message: _formatNetworkError(e));
@@ -583,7 +625,14 @@ class ApiService {
       if (response.statusCode == 200) {
         return ApiResponse(success: true, data: json);
       } else {
-        return ApiResponse(success: false, message: json['message']?.toString());
+        if (response.statusCode == 401 || response.statusCode == 403 || response.statusCode == 404) {
+          await AuthStorage.clearSession();
+        }
+        return ApiResponse(
+          success: false,
+          code: json['code'] as String?,
+          message: json['message']?.toString(),
+        );
       }
     } catch (e) {
       return ApiResponse(success: false, message: _formatNetworkError(e));
@@ -605,7 +654,14 @@ class ApiService {
       if (response.statusCode == 200) {
         return ApiResponse(success: true, data: json);
       } else {
-        return ApiResponse(success: false, message: json['message']?.toString());
+        if (response.statusCode == 401 || response.statusCode == 403 || response.statusCode == 404) {
+          await AuthStorage.clearSession();
+        }
+        return ApiResponse(
+          success: false,
+          code: json['code'] as String?,
+          message: json['message']?.toString(),
+        );
       }
     } catch (e) {
       return ApiResponse(success: false, message: _formatNetworkError(e));
@@ -628,7 +684,14 @@ class ApiService {
       if (response.statusCode == 200) {
         return ApiResponse(success: true, data: json);
       } else {
-        return ApiResponse(success: false, message: json['message']?.toString());
+        if (response.statusCode == 401 || response.statusCode == 403 || response.statusCode == 404) {
+          await AuthStorage.clearSession();
+        }
+        return ApiResponse(
+          success: false,
+          code: json['code'] as String?,
+          message: json['message']?.toString(),
+        );
       }
     } catch (e) {
       return ApiResponse(success: false, message: _formatNetworkError(e));
@@ -870,7 +933,14 @@ class ApiService {
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return ApiResponse(success: true, data: json);
       } else {
-        return ApiResponse(success: false, message: json['message']?.toString());
+        if (response.statusCode == 401 || response.statusCode == 403 || response.statusCode == 404) {
+          await AuthStorage.clearSession();
+        }
+        return ApiResponse(
+          success: false,
+          code: json['code'] as String?,
+          message: json['message']?.toString(),
+        );
       }
     } catch (e) {
       return ApiResponse(success: false, message: _formatNetworkError(e));
@@ -890,7 +960,14 @@ class ApiService {
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return ApiResponse(success: true, data: json);
       } else {
-        return ApiResponse(success: false, message: json['message']?.toString());
+        if (response.statusCode == 401 || response.statusCode == 403 || response.statusCode == 404) {
+          await AuthStorage.clearSession();
+        }
+        return ApiResponse(
+          success: false,
+          code: json['code'] as String?,
+          message: json['message']?.toString(),
+        );
       }
     } catch (e) {
       return ApiResponse(success: false, message: _formatNetworkError(e));
@@ -1144,7 +1221,14 @@ class ApiService {
       if (response.statusCode == 200) {
         return ApiResponse(success: true, data: json);
       } else {
-        return ApiResponse(success: false, message: json['message']?.toString());
+        if (response.statusCode == 401 || response.statusCode == 403 || response.statusCode == 404) {
+          await AuthStorage.clearSession();
+        }
+        return ApiResponse(
+          success: false,
+          code: json['code'] as String?,
+          message: json['message']?.toString(),
+        );
       }
     } catch (e) {
       return ApiResponse(success: false, message: _formatNetworkError(e));
@@ -1297,7 +1381,14 @@ class ApiService {
       if (response.statusCode == 200) {
         return ApiResponse(success: true, data: json);
       } else {
-        return ApiResponse(success: false, message: json['message']?.toString());
+        if (response.statusCode == 401 || response.statusCode == 403 || response.statusCode == 404) {
+          await AuthStorage.clearSession();
+        }
+        return ApiResponse(
+          success: false,
+          code: json['code'] as String?,
+          message: json['message']?.toString(),
+        );
       }
     } catch (e) {
       return ApiResponse(success: false, message: _formatNetworkError(e));
@@ -1317,7 +1408,14 @@ class ApiService {
       if (response.statusCode == 200) {
         return ApiResponse(success: true, data: json);
       } else {
-        return ApiResponse(success: false, message: json['message']?.toString());
+        if (response.statusCode == 401 || response.statusCode == 403 || response.statusCode == 404) {
+          await AuthStorage.clearSession();
+        }
+        return ApiResponse(
+          success: false,
+          code: json['code'] as String?,
+          message: json['message']?.toString(),
+        );
       }
     } catch (e) {
       return ApiResponse(success: false, message: _formatNetworkError(e));
@@ -1339,7 +1437,14 @@ class ApiService {
       if (response.statusCode == 200) {
         return ApiResponse(success: true, data: json);
       } else {
-        return ApiResponse(success: false, message: json['message']?.toString());
+        if (response.statusCode == 401 || response.statusCode == 403 || response.statusCode == 404) {
+          await AuthStorage.clearSession();
+        }
+        return ApiResponse(
+          success: false,
+          code: json['code'] as String?,
+          message: json['message']?.toString(),
+        );
       }
     } catch (e) {
       return ApiResponse(success: false, message: _formatNetworkError(e));

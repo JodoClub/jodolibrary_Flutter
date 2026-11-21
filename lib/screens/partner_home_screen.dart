@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/app_models.dart';
 import '../models/library_business_model.dart';
 import '../models/library_facilities.dart';
+import '../models/library_rate_card.dart';
 import '../services/api_config.dart';
 import '../services/api_service.dart';
 import '../services/auth_storage.dart';
@@ -274,6 +275,12 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
         if (_ownerPhotoUrl != null && _ownerPhotoUrl!.isNotEmpty) {
           await AuthStorage.saveOwnerPhoto(_ownerPhotoUrl!);
         }
+      } else if (!res.success && mounted) {
+        if (res.code == 'UNAUTHORIZED' || (res.message?.contains('Authentication required') ?? false)) {
+          await AuthStorage.clearSession();
+          widget.onLogout();
+          return;
+        }
       }
     } catch (_) {}
 
@@ -293,16 +300,6 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
         });
       }
     } catch (_) {}
-  }
-
-  String _getInitials(String name) {
-    final parts = name.trim().split(RegExp(r'\s+'));
-    if (parts.length >= 2 && parts[0].isNotEmpty && parts[1].isNotEmpty) {
-      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
-    } else if (parts.isNotEmpty && parts[0].isNotEmpty) {
-      return parts[0][0].toUpperCase();
-    }
-    return 'LO';
   }
 
   String _getFirstName(String name) {
@@ -520,52 +517,12 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                   Expanded(
                     child: Row(
                       children: [
-                        Container(
-                          width: 50,
-                          height: 50,
-                          padding: const EdgeInsets.all(2.5),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(color: AppColors.orange400, width: 2.5),
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppColors.orange500.withValues(alpha: 0.35),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: Container(
-                            decoration: const BoxDecoration(
-                              color: AppColors.orange500,
-                              shape: BoxShape.circle,
-                            ),
-                            clipBehavior: Clip.antiAlias,
-                            alignment: Alignment.center,
-                            child: _ownerPhotoUrl != null && _ownerPhotoUrl!.isNotEmpty
-                                ? Image.network(
-                                    _resolvePhotoUrl(_ownerPhotoUrl) ?? _ownerPhotoUrl!,
-                                    fit: BoxFit.cover,
-                                    width: 45,
-                                    height: 45,
-                                    errorBuilder: (_, __, ___) => Text(
-                                      _getInitials(_ownerName),
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w900,
-                                        fontSize: 15,
-                                      ),
-                                    ),
-                                  )
-                                : Text(
-                                    _getInitials(_ownerName),
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w900,
-                                      fontSize: 15,
-                                    ),
-                                  ),
-                          ),
+                        AppAvatar(
+                          size: 48,
+                          isOwner: true,
+                          photoUrl: _ownerPhotoUrl,
+                          borderColor: AppColors.orange400,
+                          borderWidth: 2.5,
                         ),
                         const SizedBox(width: 14),
                         Expanded(
@@ -3255,52 +3212,12 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Container(
-                      width: 68,
-                      height: 68,
-                      padding: const EdgeInsets.all(3),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(color: AppColors.orange400, width: 2.5),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.orange500.withValues(alpha: 0.35),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Container(
-                        decoration: const BoxDecoration(
-                          color: AppColors.orange500,
-                          shape: BoxShape.circle,
-                        ),
-                        clipBehavior: Clip.antiAlias,
-                        alignment: Alignment.center,
-                        child: _ownerPhotoUrl != null && _ownerPhotoUrl!.isNotEmpty
-                            ? Image.network(
-                                _resolvePhotoUrl(_ownerPhotoUrl) ?? _ownerPhotoUrl!,
-                                fit: BoxFit.cover,
-                                width: 62,
-                                height: 62,
-                                errorBuilder: (_, __, ___) => Text(
-                                  _getInitials(_ownerName),
-                                  style: const TextStyle(
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.w900,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              )
-                            : Text(
-                                _getInitials(_ownerName),
-                                style: const TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w900,
-                                  color: Colors.white,
-                                ),
-                              ),
-                      ),
+                    AppAvatar(
+                      size: 64,
+                      isOwner: true,
+                      photoUrl: _ownerPhotoUrl,
+                      borderColor: AppColors.orange400,
+                      borderWidth: 2.5,
                     ),
                     const SizedBox(width: 16),
                     Expanded(
@@ -3547,95 +3464,13 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                     ),
                     const SizedBox(height: 18),
 
-                    // 1. Owner Photo with Camera Badge
-                    Stack(
-                      alignment: Alignment.bottomRight,
-                      children: [
-                        GestureDetector(
-                          onTap: isUploadingPhoto || isSaving ? null : showPhotoSourceSheet,
-                          child: Container(
-                            width: 90,
-                            height: 90,
-                            decoration: BoxDecoration(
-                              color: AppColors.orange500,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: AppColors.orange400, width: 3),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.orange500.withValues(alpha: 0.25),
-                                  blurRadius: 14,
-                                  offset: const Offset(0, 5),
-                                ),
-                              ],
-                            ),
-                            clipBehavior: Clip.antiAlias,
-                            child: isUploadingPhoto
-                                ? const Center(
-                                    child: CircularProgressIndicator(
-                                      color: Colors.white,
-                                      strokeWidth: 3,
-                                    ),
-                                  )
-                                : (tempPhotoUrl != null && tempPhotoUrl!.isNotEmpty
-                                    ? Image.network(
-                                        _resolvePhotoUrl(tempPhotoUrl) ?? tempPhotoUrl!,
-                                        fit: BoxFit.cover,
-                                        width: 90,
-                                        height: 90,
-                                        errorBuilder: (_, __, ___) => Center(
-                                          child: Text(
-                                            _getInitials(nameCtrl.text.isNotEmpty ? nameCtrl.text : _ownerName),
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 28,
-                                              fontWeight: FontWeight.w900,
-                                            ),
-                                          ),
-                                        ),
-                                      )
-                                    : Center(
-                                        child: Text(
-                                          _getInitials(nameCtrl.text.isNotEmpty ? nameCtrl.text : _ownerName),
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 28,
-                                            fontWeight: FontWeight.w900,
-                                          ),
-                                        ),
-                                      )),
-                          ),
-                        ),
-                        GestureDetector(
-                          onTap: isUploadingPhoto || isSaving ? null : showPhotoSourceSheet,
-                          child: Container(
-                            padding: const EdgeInsets.all(7),
-                            decoration: BoxDecoration(
-                              color: AppColors.primary,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 2),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.15),
-                                  blurRadius: 6,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 16),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    GestureDetector(
-                      onTap: isUploadingPhoto || isSaving ? null : showPhotoSourceSheet,
-                      child: Text(
-                        tempPhotoUrl != null ? 'Change Photo' : 'Upload Photo',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.primary,
-                          fontWeight: FontWeight.w800,
-                        ),
+                    // 1. Owner Default Avatar
+                    const Center(
+                      child: AppAvatar(
+                        size: 80,
+                        isOwner: true,
+                        borderColor: AppColors.orange400,
+                        borderWidth: 3.0,
                       ),
                     ),
                     const SizedBox(height: 22),
@@ -5167,17 +5002,14 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
     }
 
     int selectedNewSeat = availableSeats.first;
-    String selectedShift = m.shiftTiming ?? 'Full Day (08:00 AM - 08:00 PM)';
+    String selectedShift = m.shiftTiming ?? LibraryRateCard.defaultSlot.timing;
     bool isSaving = false;
     String? modalError;
 
-    final timingOptions = [
-      'Full Day (08:00 AM - 08:00 PM)',
-      'Morning Shift (06:00 AM - 02:00 PM)',
-      'Evening Shift (02:00 PM - 10:00 PM)',
-      'Night Owl Shift (10:00 PM - 06:00 AM)',
-      '24 Hours Dedicated (24x7)',
-    ];
+    final timingOptions = LibraryRateCard.allSlots.map((s) => s.timing).toSet().toList();
+    if (!timingOptions.contains(selectedShift)) {
+      timingOptions.insert(0, selectedShift);
+    }
 
     showDialog(
       context: context,
@@ -5327,10 +5159,15 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
     int step = 1; // 1: Search & verify student, 2: Seat, shift & plan allocation
     final phoneCtrl = TextEditingController();
     final nameCtrl = TextEditingController();
+
+    // Rate card & shift state as per PDF
+    String selectedCategory = '6 Hours';
+    LibraryShiftSlot selectedSlot = LibraryRateCard.defaultSlot;
+    String selectedDuration = '1m'; // '1m', '3m', '6m', '1y'
+    bool assignDedicatedSeat = false; // Floating seat for 1m, dedicated seat for 3m/6m/1y/24h
+
     final feeCtrl = TextEditingController(
-      text: _businessProfile != null && _businessProfile!.monthlyPrice > 0
-          ? '${_businessProfile!.monthlyPrice.toInt()}'
-          : '1499',
+      text: '${selectedSlot.fee1m.toInt()}',
     );
 
     bool isSearching = false;
@@ -5344,9 +5181,6 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
     bool showQuickSignup = false;
 
     String? selectedDesk;
-    String selectedTiming = 'Full Day (08:00 AM - 08:00 PM)';
-    String selectedPlan = 'Full Day Dedicated Desk';
-    String selectedDuration = '1m';
     String selectedExamCategory = 'UPSC / Civil Services';
     String selectedGender = 'Male';
 
@@ -5363,22 +5197,6 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
       deskOptions = List.generate(total, (i) => 'Seat #${i + 1}');
     }
     selectedDesk = deskOptions.first;
-
-    final timingOptions = [
-      'Full Day (08:00 AM - 08:00 PM)',
-      'Morning Shift (06:00 AM - 02:00 PM)',
-      'Evening Shift (02:00 PM - 10:00 PM)',
-      'Night Owl Shift (10:00 PM - 06:00 AM)',
-      '24 Hours Dedicated (24x7)',
-    ];
-
-    final planOptions = [
-      'Full Day Dedicated Desk',
-      'Morning Shift Desk',
-      'Evening Shift Desk',
-      'Night Owl Dedicated Desk',
-      '24x7 Flexi Desk',
-    ];
 
     final examOptions = [
       'UPSC / Civil Services',
@@ -5807,134 +5625,443 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                   ],
 
                   // ----------------------------------------------------
-                  // STEP 2: Allot Seat, Shift Timing & Plan
+                  // STEP 2: Allot Seat, Shift Timing & Duration Plan
                   // ----------------------------------------------------
                   if (step == 2) ...[
-                    // Student Header Pill
+                    // Student Header Card
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: AppColors.indigo50,
-                        borderRadius: BorderRadius.circular(12),
+                        color: AppColors.slate50,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: AppColors.slate200),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.person_rounded, size: 16, color: AppColors.indigo950),
-                          const SizedBox(width: 8),
+                          AppAvatar(
+                            isOwner: false,
+                            gender: studentData?['gender']?.toString() ?? selectedGender,
+                            name: studentData?['fullName']?.toString() ?? 'Student',
+                            size: 38,
+                          ),
+                          const SizedBox(width: 10),
                           Expanded(
-                            child: Text(
-                              '${studentData?['fullName'] ?? "Student"} · +91 ${phoneCtrl.text.trim()}',
-                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.indigo950),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  studentData?['fullName']?.toString() ?? "Student",
+                                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: AppColors.slate900),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  '+91 ${phoneCtrl.text.trim()} · ${studentData?['examCategory'] ?? selectedExamCategory}',
+                                  style: const TextStyle(fontSize: 10.5, color: AppColors.slate500, fontWeight: FontWeight.w600),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
                             ),
                           ),
                           InkWell(
                             onTap: () => setModalState(() => step = 1),
-                            child: const Text('Change', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.primary)),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary.withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Text(
+                                'Change',
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.primary),
+                              ),
+                            ),
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 16),
-
-                    // Desk Selector
-                    DropdownFieldWidget(
-                      label: 'ASSIGN AVAILABLE DESK',
-                      value: selectedDesk,
-                      items: deskOptions,
-                      hint: 'Select Available Desk',
-                      onChanged: (val) {
-                        if (val != null) setModalState(() => selectedDesk = val);
-                      },
-                    ),
                     const SizedBox(height: 14),
 
-                    // Shift Timing Selector
-                    DropdownFieldWidget(
-                      label: 'SHIFT TIMING',
-                      value: selectedTiming,
-                      items: timingOptions,
-                      hint: 'Select Shift Timing',
-                      onChanged: (val) {
-                        if (val != null) setModalState(() => selectedTiming = val);
-                      },
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Membership Plan Selector
-                    DropdownFieldWidget(
-                      label: 'MEMBERSHIP PLAN',
-                      value: selectedPlan,
-                      items: planOptions,
-                      hint: 'Select Membership Plan',
-                      onChanged: (val) {
-                        if (val != null) setModalState(() => selectedPlan = val);
-                      },
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Plan Duration
+                    // 1. Shift Duration Category Chips
                     const Text(
-                      'PLAN DURATION',
+                      '1. SELECT SHIFT DURATION',
                       style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: AppColors.slate500, letterSpacing: 0.8),
                     ),
                     const SizedBox(height: 6),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      child: Row(
+                        children: LibraryRateCard.categories.map((cat) {
+                          final isSel = selectedCategory == cat;
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: ChoiceChip(
+                              label: Text(
+                                cat,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: isSel ? FontWeight.w900 : FontWeight.w700,
+                                  color: isSel ? Colors.white : AppColors.slate700,
+                                ),
+                              ),
+                              selected: isSel,
+                              selectedColor: AppColors.primary,
+                              backgroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                side: BorderSide(color: isSel ? AppColors.primary : AppColors.slate200),
+                              ),
+                              onSelected: (selected) {
+                                if (selected) {
+                                  setModalState(() {
+                                    selectedCategory = cat;
+                                    final slots = LibraryRateCard.getSlotsForCategory(cat);
+                                    if (slots.isNotEmpty) {
+                                      selectedSlot = slots.first;
+                                    }
+                                    if (selectedSlot.isDedicatedSeat || selectedDuration != '1m') {
+                                      assignDedicatedSeat = true;
+                                    }
+                                    feeCtrl.text = selectedSlot.getFeeForDuration(selectedDuration).toInt().toString();
+                                  });
+                                }
+                              },
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // 2. Choose Shift Timing & Slot Choices
+                    const Text(
+                      '2. CHOOSE SHIFT TIMING & SLOT',
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: AppColors.slate500, letterSpacing: 0.8),
+                    ),
+                    const SizedBox(height: 6),
+                    Column(
+                      children: LibraryRateCard.getSlotsForCategory(selectedCategory).map((slot) {
+                        final isSel = selectedSlot.timing == slot.timing && selectedSlot.planName == slot.planName;
+                        return InkWell(
+                          onTap: () {
+                            setModalState(() {
+                              selectedSlot = slot;
+                              if (slot.isDedicatedSeat || selectedDuration != '1m') {
+                                assignDedicatedSeat = true;
+                              }
+                              feeCtrl.text = slot.getFeeForDuration(selectedDuration).toInt().toString();
+                            });
+                          },
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 6),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: isSel ? AppColors.orange50.withOpacity(0.5) : Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: isSel ? AppColors.orange500 : AppColors.slate200,
+                                width: isSel ? 1.6 : 1.0,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  isSel ? Icons.radio_button_checked : Icons.radio_button_off,
+                                  size: 16,
+                                  color: isSel ? AppColors.orange500 : AppColors.slate400,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              slot.displayTiming,
+                                              style: TextStyle(
+                                                fontSize: 11.5,
+                                                fontWeight: FontWeight.w800,
+                                                color: isSel ? AppColors.slate900 : AppColors.slate800,
+                                              ),
+                                            ),
+                                          ),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                            decoration: BoxDecoration(
+                                              color: slot.tag.contains('Rush')
+                                                  ? AppColors.rose50
+                                                  : (slot.tag.contains('VIP') ? AppColors.amber50 : AppColors.slate100),
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: Text(
+                                              slot.tag,
+                                              style: TextStyle(
+                                                fontSize: 9,
+                                                fontWeight: FontWeight.w800,
+                                                color: slot.tag.contains('Rush')
+                                                    ? AppColors.rose600
+                                                    : (slot.tag.contains('VIP') ? AppColors.amber800 : AppColors.slate700),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        '${slot.planName} · Base ₹${slot.fee1m.toInt()}/mo (${slot.effectiveHourly})',
+                                        style: const TextStyle(fontSize: 10, color: AppColors.slate500, fontWeight: FontWeight.w600),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // 3. Plan Tenure & Long-Term Offers (PDF Section 2)
                     Row(
-                      children: [
-                        {'label': '1 Month', 'val': '1m'},
-                        {'label': '3 Months', 'val': '3m'},
-                        {'label': '6 Months', 'val': '6m'},
-                      ].map((d) {
-                        final isSel = selectedDuration == d['val'];
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: const [
+                        Text(
+                          '3. PLAN TENURE & OFFERS',
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: AppColors.slate500, letterSpacing: 0.8),
+                        ),
+                        Text(
+                          'Long-Term Discount Offers',
+                          style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: AppColors.emerald600),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: LibraryRateCard.durationOptions.map((dur) {
+                        final code = dur['code']!;
+                        final isSel = selectedDuration == code;
+                        final feeForDur = selectedSlot.getFeeForDuration(code).toInt();
                         return Expanded(
                           child: InkWell(
-                            onTap: () => setModalState(() => selectedDuration = d['val']!),
+                            onTap: () {
+                              setModalState(() {
+                                selectedDuration = code;
+                                if (code != '1m' || selectedSlot.isDedicatedSeat) {
+                                  assignDedicatedSeat = true;
+                                } else {
+                                  assignDedicatedSeat = false;
+                                }
+                                feeCtrl.text = selectedSlot.getFeeForDuration(code).toInt().toString();
+                              });
+                            },
                             borderRadius: BorderRadius.circular(10),
                             child: Container(
-                              margin: const EdgeInsets.symmetric(horizontal: 3),
-                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              margin: const EdgeInsets.symmetric(horizontal: 2),
+                              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 3),
                               decoration: BoxDecoration(
                                 color: isSel ? AppColors.primary : Colors.white,
                                 borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: isSel ? AppColors.primary : AppColors.slate200),
-                              ),
-                              alignment: Alignment.center,
-                              child: Text(
-                                d['label']!,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: isSel ? Colors.white : AppColors.slate700,
+                                border: Border.all(
+                                  color: isSel ? AppColors.primary : AppColors.slate200,
+                                  width: isSel ? 1.5 : 1.0,
                                 ),
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    dur['label']!,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w900,
+                                      color: isSel ? Colors.white : AppColors.slate800,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: isSel ? Colors.white.withOpacity(0.2) : AppColors.emerald50,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      dur['sub']!,
+                                      style: TextStyle(
+                                        fontSize: 8,
+                                        fontWeight: FontWeight.w800,
+                                        color: isSel ? Colors.white : AppColors.emerald700,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    '₹$feeForDur',
+                                    style: TextStyle(
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w900,
+                                      color: isSel ? Colors.white : AppColors.slate900,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
                         );
                       }).toList(),
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
 
-                    // Monthly Fee
-                    FormFieldWidget(
-                      label: 'MONTHLY FEE (₹)',
-                      placeholder: 'e.g. 1499',
-                      controller: feeCtrl,
-                      prefix: '₹',
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    // 4. Seat Allocation Rule (PDF Section 3 Rule 3)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: (selectedDuration != '1m' || selectedSlot.isDedicatedSeat)
+                            ? AppColors.emerald50.withOpacity(0.6)
+                            : AppColors.slate50,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: (selectedDuration != '1m' || selectedSlot.isDedicatedSeat)
+                              ? AppColors.emerald200
+                              : AppColors.slate200,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                (selectedDuration != '1m' || selectedSlot.isDedicatedSeat)
+                                    ? Icons.workspace_premium_rounded
+                                    : Icons.airline_seat_recline_normal_rounded,
+                                size: 15,
+                                color: (selectedDuration != '1m' || selectedSlot.isDedicatedSeat)
+                                    ? AppColors.emerald700
+                                    : AppColors.slate600,
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  (selectedDuration != '1m' || selectedSlot.isDedicatedSeat)
+                                      ? 'FIXED SEAT + PERSONAL LOCKER FREE 🔐'
+                                      : '1-MONTH FLOATING / UNRESERVED SEAT',
+                                  style: TextStyle(
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.w900,
+                                    color: (selectedDuration != '1m' || selectedSlot.isDedicatedSeat)
+                                        ? AppColors.emerald800
+                                        : AppColors.slate700,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            (selectedDuration != '1m' || selectedSlot.isDedicatedSeat)
+                                ? 'Rule 3: Multi-month ($selectedDuration) members get a guaranteed fixed seat number and personal locker included for free!'
+                                : 'Rule 3: 1-Month members sit on unreserved/floating seats during their slot. You can also assign a dedicated seat if preferred.',
+                            style: const TextStyle(fontSize: 10, color: AppColors.slate600, height: 1.3),
+                          ),
+                          const SizedBox(height: 10),
+                          DropdownFieldWidget(
+                            label: (selectedDuration != '1m' || selectedSlot.isDedicatedSeat)
+                                ? 'ALLOT DEDICATED SEAT NUMBER'
+                                : 'ASSIGN SEAT (FLOATING / FLEXI)',
+                            value: selectedDesk,
+                            items: deskOptions,
+                            hint: 'Select Seat Number',
+                            onChanged: (val) {
+                              if (val != null) setModalState(() => selectedDesk = val);
+                            },
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 22),
+                    const SizedBox(height: 12),
+
+                    // 5. Total Fee & Savings Card
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.indigo50.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: AppColors.indigo100),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'TOTAL PAYABLE FEE',
+                                    style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: AppColors.slate500, letterSpacing: 0.8),
+                                  ),
+                                  const SizedBox(height: 1),
+                                  Text(
+                                    selectedSlot.getSavingsPitch(selectedDuration),
+                                    style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: AppColors.emerald700),
+                                  ),
+                                ],
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  '${selectedSlot.effectiveHourly} · ${selectedDuration.toUpperCase()}',
+                                  style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: AppColors.primary),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          FormFieldWidget(
+                            label: 'EDIT TOTAL FEE (₹)',
+                            placeholder: 'e.g. ${selectedSlot.getFeeForDuration(selectedDuration).toInt()}',
+                            controller: feeCtrl,
+                            prefix: '₹',
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            selectedDuration == '1m'
+                                ? 'Standard monthly rate: ₹${selectedSlot.fee1m.toInt()}/month'
+                                : 'Effective monthly rate: ₹${selectedSlot.getEffectiveMonthly(selectedDuration).toInt()}/mo (Standard rate was ₹${selectedSlot.fee1m.toInt()}/mo)',
+                            style: const TextStyle(fontSize: 9.5, color: AppColors.slate500, fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 18),
 
                     // Send Request Button
                     CustomButton(
-                      label: isSendingRequest ? 'Sending Admission Request...' : 'Send Admission Request to Student',
+                      label: isSendingRequest
+                          ? 'Sending Admission Request...'
+                          : 'Send Admission Request to Student',
                       onPressed: isSendingRequest
                           ? () {}
                           : () async {
                               final feeText = feeCtrl.text.trim();
-                              final fee = double.tryParse(feeText) ?? 1499;
+                              final totalFee = double.tryParse(feeText) ?? selectedSlot.getFeeForDuration(selectedDuration);
 
                               if (selectedDesk == null || selectedDesk!.isEmpty) {
-                                setModalState(() => globalError = 'Please select a desk');
+                                setModalState(() => globalError = 'Please select a desk number');
                                 return;
                               }
 
@@ -5944,14 +6071,23 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                               });
 
                               final sId = studentData?['studentId']?.toString();
+                              final isFloating = selectedDuration == '1m' && !selectedSlot.isDedicatedSeat;
+                              final planDisplayName = '${selectedSlot.planName}${isFloating ? " (Floating)" : " (Dedicated)"}';
+
+                              int months = 1;
+                              if (selectedDuration == '3m') months = 3;
+                              if (selectedDuration == '6m') months = 6;
+                              if (selectedDuration == '1y' || selectedDuration == '12m') months = 12;
+                              final monthlyEquivalent = totalFee / months;
+
                               final res = await ApiService.sendAdmissionRequest(
                                 studentId: sId,
                                 mobile: phoneCtrl.text.trim(),
                                 fullName: studentData?['fullName']?.toString(),
                                 assignedSeat: selectedDesk!,
-                                planName: selectedPlan,
-                                shiftTiming: selectedTiming,
-                                monthlyFee: fee,
+                                planName: planDisplayName,
+                                shiftTiming: selectedSlot.timing,
+                                monthlyFee: monthlyEquivalent,
                                 duration: selectedDuration,
                               );
 
@@ -5962,7 +6098,7 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
                                     content: Text(
-                                      'Admission request sent to ${studentData?['fullName'] ?? "student"}! Seat ${selectedDesk!} is reserved pending student acceptance.',
+                                      'Admission request sent to ${studentData?['fullName'] ?? "student"}! ${selectedDesk!} reserved for ${selectedSlot.timing} ($selectedDuration).',
                                       style: const TextStyle(fontWeight: FontWeight.w700),
                                     ),
                                     backgroundColor: AppColors.emerald500,

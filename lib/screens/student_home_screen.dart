@@ -289,6 +289,12 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
           emergencyContact: _emergencyContact,
           gender: _gender,
         );
+      } else if (!res.success && mounted) {
+        if (res.code == 'UNAUTHORIZED' || (res.message?.contains('Authentication required') ?? false)) {
+          await AuthStorage.clearSession();
+          widget.onLogout();
+          return;
+        }
       }
     } catch (_) {}
 
@@ -953,52 +959,12 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
                         Stack(
                           clipBehavior: Clip.none,
                           children: [
-                            Container(
-                              width: 50,
-                              height: 50,
-                              padding: const EdgeInsets.all(2.5),
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(color: AppColors.orange400, width: 2.5),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: AppColors.orange500.withValues(alpha: 0.35),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                              child: Container(
-                                decoration: const BoxDecoration(
-                                  color: AppColors.orange500,
-                                  shape: BoxShape.circle,
-                                ),
-                                clipBehavior: Clip.antiAlias,
-                                alignment: Alignment.center,
-                                child: _studentPhotoUrl != null && _studentPhotoUrl!.isNotEmpty
-                                    ? Image.network(
-                                        _resolvePhotoUrl(_studentPhotoUrl) ?? _studentPhotoUrl!,
-                                        fit: BoxFit.cover,
-                                        width: 45,
-                                        height: 45,
-                                        errorBuilder: (_, __, ___) => Text(
-                                          _getInitials(_studentName),
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.w900,
-                                            fontSize: 15,
-                                          ),
-                                        ),
-                                      )
-                                    : Text(
-                                        _getInitials(_studentName),
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w900,
-                                          fontSize: 15,
-                                        ),
-                                      ),
-                              ),
+                            AppAvatar(
+                              size: 48,
+                              gender: _gender,
+                              photoUrl: _studentPhotoUrl,
+                              borderColor: AppColors.orange400,
+                              borderWidth: 2.5,
                             ),
                             Positioned(
                               right: -1,
@@ -3571,52 +3537,12 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
               const SizedBox(height: 20),
               Row(
                 children: [
-                  Container(
-                    width: 66,
-                    height: 66,
-                    padding: const EdgeInsets.all(3),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: AppColors.orange400, width: 2.5),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.orange500.withValues(alpha: 0.35),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Container(
-                      decoration: const BoxDecoration(
-                        color: AppColors.orange500,
-                        shape: BoxShape.circle,
-                      ),
-                      clipBehavior: Clip.antiAlias,
-                      alignment: Alignment.center,
-                      child: _studentPhotoUrl != null && _studentPhotoUrl!.isNotEmpty
-                          ? Image.network(
-                              _resolvePhotoUrl(_studentPhotoUrl) ?? _studentPhotoUrl!,
-                              fit: BoxFit.cover,
-                              width: 60,
-                              height: 60,
-                              errorBuilder: (_, __, ___) => Text(
-                                _getInitials(_studentName),
-                                style: const TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w900,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            )
-                          : Text(
-                              _getInitials(_studentName),
-                              style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w900,
-                                color: Colors.white,
-                              ),
-                            ),
-                    ),
+                  AppAvatar(
+                    size: 64,
+                    gender: _gender,
+                    photoUrl: _studentPhotoUrl,
+                    borderColor: AppColors.orange400,
+                    borderWidth: 2.5,
                   ),
                   const SizedBox(width: 16),
                   Expanded(
@@ -3970,6 +3896,16 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
                     ],
                   ),
                   const SizedBox(height: 16),
+                  Center(
+                    child: AppAvatar(
+                      size: 72,
+                      gender: selectedGender,
+                      photoUrl: _studentPhotoUrl,
+                      borderColor: AppColors.orange400,
+                      borderWidth: 2.5,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   FormFieldWidget(
                     label: 'FULL NAME',
                     placeholder: 'e.g. Aarav Kumar',
@@ -4297,6 +4233,20 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
             TextField(
               controller: codeCtrl,
               keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (val) {
+                final code = val.trim();
+                if (code.length == 6) {
+                  Navigator.of(dlgCtx).pop();
+                  _handleQrAttendanceScan(code, setModalState);
+                }
+              },
+              onChanged: (val) {
+                if (val.trim().length == 6) {
+                  Navigator.of(dlgCtx).pop();
+                  _handleQrAttendanceScan(val.trim(), setModalState);
+                }
+              },
               maxLength: 6,
               autofocus: true,
               style: const TextStyle(

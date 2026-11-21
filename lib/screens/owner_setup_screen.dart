@@ -201,49 +201,29 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
     return Scaffold(
       backgroundColor: AppColors.slate50,
       body: SafeArea(
-        child: Column(
-          children: [
-            BackBar(onBack: widget.onBack, step: 'Owner setup'),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Center(
-                      child: Column(
-                        children: [
-                          PhotoUploadWidget(isStudent: false),
-                          SizedBox(height: 12),
-                          Text(
-                            'Add owner photo',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.slate900,
-                            ),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            'Tap to upload · JPG or PNG',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: AppColors.slate400,
-                            ),
-                          ),
-                        ],
+        child: GestureDetector(
+          onTap: () => FocusScope.of(context).unfocus(),
+          behavior: HitTestBehavior.opaque,
+          child: Column(
+            children: [
+              BackBar(onBack: widget.onBack, step: 'Owner setup'),
+              Expanded(
+                child: SingleChildScrollView(
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Set up your library',
+                        style: TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.slate900,
+                          letterSpacing: -0.6,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 28),
-                    const Text(
-                      'Set up your library',
-                      style: TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors.slate900,
-                        letterSpacing: -0.6,
-                      ),
-                    ),
                     const SizedBox(height: 6),
                     const Text(
                       'Just the essentials for now. Desks and entrance standee QR will be created automatically.',
@@ -307,6 +287,8 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
                       label: 'Total Seat Capacity *',
                       placeholder: 'e.g. 60',
                       keyboardType: TextInputType.number,
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) => _handleSubmit(),
                       inputFormatters: [
                         FilteringTextInputFormatter.digitsOnly,
                         LengthLimitingTextInputFormatter(4),
@@ -349,6 +331,7 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }

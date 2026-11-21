@@ -196,13 +196,17 @@ class _OTPScreenState extends State<OTPScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: Column(
-          children: [
-            BackBar(onBack: widget.onBack, step: 'Step 2 of 2'),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                child: Column(
+        child: GestureDetector(
+          onTap: () => FocusScope.of(context).unfocus(),
+          behavior: HitTestBehavior.opaque,
+          child: Column(
+            children: [
+              BackBar(onBack: widget.onBack, step: 'Step 2 of 2'),
+              Expanded(
+                child: SingleChildScrollView(
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const BrandLogo(height: 38),
@@ -336,6 +340,9 @@ class _OTPScreenState extends State<OTPScreen> {
                                     _focusNodes[index + 1].requestFocus();
                                   } else if (val.isEmpty && index > 0) {
                                     _focusNodes[index - 1].requestFocus();
+                                  } else if (val.isNotEmpty && index == 3) {
+                                    _focusNodes[index].unfocus();
+                                    _handleVerify();
                                   }
                                 },
                               ),
@@ -394,6 +401,7 @@ class _OTPScreenState extends State<OTPScreen> {
                             for (int i = 0; i < 4; i++) {
                               _controllers[i].text = devOtp[i];
                             }
+                            FocusScope.of(context).unfocus();
                             if (_otpError != null) {
                               setState(() => _otpError = null);
                             }
@@ -439,6 +447,7 @@ class _OTPScreenState extends State<OTPScreen> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }

@@ -56,6 +56,8 @@ class FormFieldWidget extends StatelessWidget {
   final String placeholder;
   final String? prefix;
   final TextInputType keyboardType;
+  final TextInputAction? textInputAction;
+  final ValueChanged<String>? onSubmitted;
   final TextEditingController? controller;
   final ValueChanged<String>? onChanged;
   final String? errorText;
@@ -71,6 +73,8 @@ class FormFieldWidget extends StatelessWidget {
     required this.placeholder,
     this.prefix,
     this.keyboardType = TextInputType.text,
+    this.textInputAction,
+    this.onSubmitted,
     this.controller,
     this.onChanged,
     this.errorText,
@@ -142,6 +146,8 @@ class FormFieldWidget extends StatelessWidget {
                   controller: controller,
                   onChanged: onChanged,
                   keyboardType: keyboardType,
+                  textInputAction: textInputAction ?? TextInputAction.next,
+                  onSubmitted: onSubmitted,
                   inputFormatters: inputFormatters,
                   maxLength: maxLength,
                   readOnly: readOnly,
@@ -559,6 +565,123 @@ class _PhotoUploadWidgetState extends State<PhotoUploadWidget> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class AppAvatar extends StatelessWidget {
+  final double size;
+  final bool isOwner;
+  final String? gender;
+  final String? name;
+  final String? photoUrl;
+  final Color? borderColor;
+  final double borderWidth;
+
+  const AppAvatar({
+    super.key,
+    this.size = 45,
+    this.isOwner = false,
+    this.gender,
+    this.name,
+    this.photoUrl,
+    this.borderColor,
+    this.borderWidth = 2.0,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final effectiveBorderColor = borderColor ?? AppColors.orange400;
+
+    final String g = (gender ?? '').trim().toLowerCase();
+    final bool isMale = g == 'male';
+    final bool isFemale = g == 'female';
+
+    final Gradient bgGradient;
+    final String emojiChar;
+
+    if (isOwner) {
+      // Library Owner: Warm Amber/Orange gradient with Library/Study Hub character
+      bgGradient = const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFFFB923C), Color(0xFFC2410C)],
+      );
+      emojiChar = '🏛️';
+    } else if (isFemale) {
+      // Female Student: Stylish Rose/Violet gradient with Female Student character
+      bgGradient = const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFFF472B6), Color(0xFF9333EA)],
+      );
+      emojiChar = '👩‍🎓';
+    } else if (isMale) {
+      // Male Student: Royal Blue/Indigo gradient with Male Student character
+      bgGradient = const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFF60A5FA), Color(0xFF1D4ED8)],
+      );
+      emojiChar = '👨‍🎓';
+    } else {
+      // Other / Neutral Student: Emerald/Teal gradient with Student character
+      bgGradient = const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFF34D399), Color(0xFF047857)],
+      );
+      emojiChar = '🧑‍🎓';
+    }
+
+    Widget content;
+    if (photoUrl != null && photoUrl!.trim().isNotEmpty) {
+      content = Image.network(
+        photoUrl!.trim(),
+        fit: BoxFit.cover,
+        width: size,
+        height: size,
+        errorBuilder: (_, __, ___) => _buildEmoji(emojiChar),
+      );
+    } else {
+      content = _buildEmoji(emojiChar);
+    }
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: effectiveBorderColor, width: borderWidth),
+        boxShadow: [
+          BoxShadow(
+            color: (borderColor ?? AppColors.orange500).withValues(alpha: 0.35),
+            blurRadius: size * 0.18,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: bgGradient,
+        ),
+        clipBehavior: Clip.antiAlias,
+        alignment: Alignment.center,
+        child: content,
+      ),
+    );
+  }
+
+  Widget _buildEmoji(String emoji) {
+    return Center(
+      child: Text(
+        emoji,
+        style: TextStyle(
+          fontSize: size * 0.52,
+          height: 1.1,
+        ),
       ),
     );
   }

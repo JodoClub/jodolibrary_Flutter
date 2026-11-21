@@ -613,39 +613,44 @@ class _OwnerBusinessProfileScreenState extends State<OwnerBusinessProfileScreen>
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 1. TOP: Library Photos (Validation: Max 5 photos hide upload button)
-            _buildPhotoSection(),
+      body: GestureDetector(
+        onTap: () => FocusScope.of(context).unfocus(),
+        behavior: HitTestBehavior.opaque,
+        child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 1. TOP: Library Photos (Validation: Max 5 photos hide upload button)
+              _buildPhotoSection(),
 
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-            // 2. Facilities (App-icon style circles with labels, 8 shown + "+ More" popup)
-            _buildFacilitiesSection(),
+              // 2. Facilities (App-icon style circles with labels, 8 shown + "+ More" popup)
+              _buildFacilitiesSection(),
 
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-            // 3. Basic Library Details & Seats (One field per row)
-            _buildBasicDetailsSection(),
+              // 3. Basic Library Details & Seats (One field per row)
+              _buildBasicDetailsSection(),
 
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-            // 4. Google Maps Navigation Section (One field per row)
-            _buildGoogleMapsSection(),
+              // 4. Google Maps Navigation Section (One field per row)
+              _buildGoogleMapsSection(),
 
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-            // 5. Operating Schedule & Timings (One field per row)
-            _buildTimingsSection(),
+              // 5. Operating Schedule & Timings (One field per row)
+              _buildTimingsSection(),
 
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-            // 6. Contact & Social Channels (One field per row - Phone & WhatsApp separated)
-            _buildContactSection(),
-          ],
+              // 6. Contact & Social Channels (One field per row - Phone & WhatsApp separated)
+              _buildContactSection(),
+            ],
+          ),
         ),
       ),
       bottomSheet: Container(
