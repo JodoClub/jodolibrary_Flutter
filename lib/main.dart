@@ -31,16 +31,24 @@ class JodoApp extends StatelessWidget {
       scaffoldMessengerKey: NetworkService.scaffoldMessengerKey,
       theme: AppTheme.lightTheme,
       builder: (context, child) {
-        return Stack(
-          children: [
-            ?child,
-            const Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: OfflineBannerBar(),
-            ),
-          ],
+        final mediaQuery = MediaQuery.of(context);
+        final clampedScaler = mediaQuery.textScaler.clamp(
+          minScaleFactor: 0.85,
+          maxScaleFactor: 1.10,
+        );
+        return MediaQuery(
+          data: mediaQuery.copyWith(textScaler: clampedScaler),
+          child: Stack(
+            children: [
+              ?child,
+              const Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: OfflineBannerBar(),
+              ),
+            ],
+          ),
         );
       },
       home: const JodoRootFlow(),
@@ -69,25 +77,29 @@ class _JodoRootFlowState extends State<JodoRootFlow> {
   }
 
   Future<void> _checkSavedSession() async {
-    // 1. If a new APK was installed, wipe session so user is logged out and login page appears
-    final wasNewInstall = await AuthStorage.checkNewInstallAndClearSession();
-    if (wasNewInstall) {
-      if (mounted) {
-        setState(() {
-          _currentScreen = AppScreen.welcome;
-        });
-      }
-      return;
+    final loggedIn = await AuthStorage.isLoggedIn();
+    if (!loggedIn) return;
+
+    final role = await AuthStorage.getRole();
+    final phone = await AuthStorage.getPhone();
+    if (role == null) return;
+
+    if (mounted) {
+      setState(() {
+        _role = role;
+        if (phone != null) _phone = phone;
+      });
     }
 
-    final loggedIn = await AuthStorage.isLoggedIn();
-    if (loggedIn) {
-      final role = await AuthStorage.getRole();
-      final phone = await AuthStorage.getPhone();
-      if (mounted && role != null) {
+    // 1. Check local stored profile first
+    final storedProfile = await AuthStorage.getStoredProfile();
+    bool hasProfile = role == UserRole.admin
+        ? (storedProfile['libraryName'] != null && storedProfile['libraryName'].toString().trim().isNotEmpty)
+        : (storedProfile['name'] != null && storedProfile['name'].toString().trim().isNotEmpty);
+
+    if (hasProfile) {
+      if (mounted) {
         setState(() {
-          _role = role;
-          if (phone != null) _phone = phone;
           _currentScreen = role == UserRole.admin
               ? AppScreen.partnerHome
               : AppScreen.studentHome;
@@ -95,6 +107,37 @@ class _JodoRootFlowState extends State<JodoRootFlow> {
       }
       // Refresh profile data from backend
       ApiService.getMe();
+    } else {
+      // 2. If local profile is empty, check backend before deciding screen
+      try {
+        final meRes = await ApiService.getMe();
+        if (meRes.success && meRes.data != null) {
+          final user = meRes.data!['user'] as Map<String, dynamic>?;
+          final profile = meRes.data!['profile'] as Map<String, dynamic>?;
+          final hasBackendProfile = role == UserRole.admin
+              ? (profile?['name'] != null && profile!['name'].toString().trim().isNotEmpty)
+              : (user?['name'] != null && user!['name'].toString().trim().isNotEmpty);
+
+          if (hasBackendProfile) {
+            hasProfile = true;
+          }
+        }
+      } catch (_) {}
+
+      if (mounted) {
+        setState(() {
+          if (hasProfile) {
+            _currentScreen = role == UserRole.admin
+                ? AppScreen.partnerHome
+                : AppScreen.studentHome;
+          } else {
+            // New user who entered mobile + OTP but closed before completing profile setup
+            _currentScreen = role == UserRole.admin
+                ? AppScreen.ownerSetup
+                : AppScreen.studentSetup;
+          }
+        });
+      }
     }
   }
 

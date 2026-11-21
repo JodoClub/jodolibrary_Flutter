@@ -877,6 +877,26 @@ class ApiService {
     }
   }
 
+  /// Generate dynamic rolling 2-minute attendance QR for library owner
+  static Future<ApiResponse<Map<String, dynamic>>> generateDynamicAttendanceQr() async {
+    try {
+      final token = await AuthStorage.getToken();
+      final uri = Uri.parse('${ApiConfig.baseUrl}/owner/attendance/dynamic-qr');
+      final response = await http
+          .post(uri, headers: _buildHeaders(token: token))
+          .timeout(_timeout);
+
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return ApiResponse(success: true, data: json);
+      } else {
+        return ApiResponse(success: false, message: json['message']?.toString());
+      }
+    } catch (e) {
+      return ApiResponse(success: false, message: _formatNetworkError(e));
+    }
+  }
+
   /// Get student past memberships and library leave history
   static Future<ApiResponse<List<Map<String, dynamic>>>> getStudentMembershipHistory() async {
     try {

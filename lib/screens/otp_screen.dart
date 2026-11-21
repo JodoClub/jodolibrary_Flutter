@@ -276,68 +276,73 @@ class _OTPScreenState extends State<OTPScreen> {
                     const SizedBox(height: 28),
 
                     // 4-digit OTP row
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: List.generate(4, (index) {
-                        return Container(
-                          width: 68,
-                          height: 68,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(
-                              color: hasError ? AppColors.rose500 : AppColors.slate200,
-                              width: hasError ? 2.0 : 1.5,
-                            ),
-                            boxShadow: hasError
-                                ? [
-                                    BoxShadow(
-                                      color: AppColors.rose500.withOpacity(0.15),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ]
-                                : [
-                                    BoxShadow(
-                                      color: AppColors.slate200.withOpacity(0.5),
-                                      blurRadius: 6,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                          ),
-                          alignment: Alignment.center,
-                          child: TextField(
-                            controller: _controllers[index],
-                            focusNode: _focusNodes[index],
-                            keyboardType: TextInputType.number,
-                            textAlign: TextAlign.center,
-                            maxLength: 1,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly,
-                              LengthLimitingTextInputFormatter(1),
-                            ],
-                            style: TextStyle(
-                              fontSize: 26,
-                              fontWeight: FontWeight.w900,
-                              color: hasError ? AppColors.rose600 : AppColors.slate900,
-                            ),
-                            decoration: const InputDecoration(
-                              counterText: '',
-                              border: InputBorder.none,
-                            ),
-                            onChanged: (val) {
-                              if (_otpError != null) {
-                                setState(() => _otpError = null);
-                              }
-                              if (val.isNotEmpty && index < 3) {
-                                _focusNodes[index + 1].requestFocus();
-                              } else if (val.isEmpty && index > 0) {
-                                _focusNodes[index - 1].requestFocus();
-                              }
-                            },
-                          ),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final boxSize = ((constraints.maxWidth - 36) / 4).clamp(48.0, 68.0);
+                        return Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: List.generate(4, (index) {
+                            return Container(
+                              width: boxSize,
+                              height: boxSize,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(18),
+                                border: Border.all(
+                                  color: hasError ? AppColors.rose500 : AppColors.slate200,
+                                  width: hasError ? 2.0 : 1.5,
+                                ),
+                                boxShadow: hasError
+                                    ? [
+                                        BoxShadow(
+                                          color: AppColors.rose500.withOpacity(0.15),
+                                          blurRadius: 8,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ]
+                                    : [
+                                        BoxShadow(
+                                          color: AppColors.slate200.withOpacity(0.5),
+                                          blurRadius: 6,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
+                              ),
+                              alignment: Alignment.center,
+                              child: TextField(
+                                controller: _controllers[index],
+                                focusNode: _focusNodes[index],
+                                keyboardType: TextInputType.number,
+                                textAlign: TextAlign.center,
+                                maxLength: 1,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.digitsOnly,
+                                  LengthLimitingTextInputFormatter(1),
+                                ],
+                                style: TextStyle(
+                                  fontSize: boxSize < 56 ? 20 : 26,
+                                  fontWeight: FontWeight.w900,
+                                  color: hasError ? AppColors.rose600 : AppColors.slate900,
+                                ),
+                                decoration: const InputDecoration(
+                                  counterText: '',
+                                  border: InputBorder.none,
+                                ),
+                                onChanged: (val) {
+                                  if (_otpError != null) {
+                                    setState(() => _otpError = null);
+                                  }
+                                  if (val.isNotEmpty && index < 3) {
+                                    _focusNodes[index + 1].requestFocus();
+                                  } else if (val.isEmpty && index > 0) {
+                                    _focusNodes[index - 1].requestFocus();
+                                  }
+                                },
+                              ),
+                            );
+                          }),
                         );
-                      }),
+                      },
                     ),
 
                     if (hasError) ...[

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -516,74 +517,87 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: AppColors.orange500,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.orange500.withValues(alpha: 0.3),
-                              blurRadius: 10,
-                              offset: const Offset(0, 3),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 50,
+                          height: 50,
+                          padding: const EdgeInsets.all(2.5),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(color: AppColors.orange400, width: 2.5),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.orange500.withValues(alpha: 0.35),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Container(
+                            decoration: const BoxDecoration(
+                              color: AppColors.orange500,
+                              shape: BoxShape.circle,
                             ),
-                          ],
-                        ),
-                        clipBehavior: Clip.antiAlias,
-                        alignment: Alignment.center,
-                        child: _ownerPhotoUrl != null && _ownerPhotoUrl!.isNotEmpty
-                            ? Image.network(
-                                _resolvePhotoUrl(_ownerPhotoUrl) ?? _ownerPhotoUrl!,
-                                fit: BoxFit.cover,
-                                width: 48,
-                                height: 48,
-                                errorBuilder: (_, __, ___) => Text(
-                                  _getInitials(_ownerName),
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: 16,
+                            clipBehavior: Clip.antiAlias,
+                            alignment: Alignment.center,
+                            child: _ownerPhotoUrl != null && _ownerPhotoUrl!.isNotEmpty
+                                ? Image.network(
+                                    _resolvePhotoUrl(_ownerPhotoUrl) ?? _ownerPhotoUrl!,
+                                    fit: BoxFit.cover,
+                                    width: 45,
+                                    height: 45,
+                                    errorBuilder: (_, __, ___) => Text(
+                                      _getInitials(_ownerName),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                  )
+                                : Text(
+                                    _getInitials(_ownerName),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 15,
+                                    ),
                                   ),
-                                ),
-                              )
-                            : Text(
-                                _getInitials(_ownerName),
-                                style: const TextStyle(
-                                  color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'OWNER PORTAL',
+                                style: TextStyle(
+                                  color: AppColors.orange400,
+                                  fontSize: 10,
                                   fontWeight: FontWeight.w900,
-                                  fontSize: 16,
+                                  letterSpacing: 1,
                                 ),
                               ),
-                      ),
-                      const SizedBox(width: 14),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'OWNER PORTAL',
-                            style: TextStyle(
-                              color: AppColors.orange400,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 1,
-                            ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Hello, ${_getFirstName(_ownerName)} 👋',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: -0.5,
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Hello, ${_getFirstName(_ownerName)} 👋',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: -0.5,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -600,50 +614,64 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 32,
-                          height: 32,
-                          decoration: BoxDecoration(
-                            color: AppColors.orange500.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(10),
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: AppColors.orange500.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            alignment: Alignment.center,
+                            child: const Icon(Icons.apartment, color: AppColors.orange400, size: 18),
                           ),
-                          alignment: Alignment.center,
-                          child: const Icon(Icons.apartment, color: AppColors.orange400, size: 18),
-                        ),
-                        const SizedBox(width: 10),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _libraryName,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w900,
-                                fontSize: 12,
-                              ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _libraryName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                Text(
+                                  '$_address, $_city · $_totalSeats Desks',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(color: AppColors.indigo300, fontSize: 10),
+                                ),
+                              ],
                             ),
-                            Text(
-                              '$_address, $_city · $_totalSeats Desks',
-                              style: const TextStyle(color: AppColors.indigo300, fontSize: 10),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: AppColors.emerald500.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(20),
+                          ),
+                        ],
                       ),
-                      child: Text(
-                        '$_occupiedSeatsCount/$_totalSeats Occupied',
-                        style: const TextStyle(
-                          color: AppColors.emerald300,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppColors.emerald500.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            '$_occupiedSeatsCount/$_totalSeats Occupied',
+                            style: const TextStyle(
+                              color: AppColors.emerald300,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -1099,7 +1127,7 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
     required Color iconColor,
   }) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
@@ -1112,45 +1140,61 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Container(
-                width: 32,
-                height: 32,
+                width: 30,
+                height: 30,
                 decoration: BoxDecoration(
                   color: iconBg,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 alignment: Alignment.center,
-                child: Icon(icon, size: 16, color: iconColor),
+                child: Icon(icon, size: 15, color: iconColor),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: tagBg,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  tag,
-                  style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: tagColor),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: tagBg,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      tag,
+                      maxLines: 1,
+                      style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: tagColor),
+                    ),
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 9,
-              fontWeight: FontWeight.w800,
-              color: AppColors.slate400,
-              letterSpacing: 0.8,
+          const SizedBox(height: 10),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.w800,
+                color: AppColors.slate400,
+                letterSpacing: 0.6,
+              ),
             ),
           ),
           const SizedBox(height: 2),
-          Text(
-            val,
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w900,
-              color: AppColors.slate900,
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              val,
+              maxLines: 1,
+              style: const TextStyle(
+                fontSize: 19,
+                fontWeight: FontWeight.w900,
+                color: AppColors.slate900,
+              ),
             ),
           ),
         ],
@@ -1828,12 +1872,15 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                           _openReallotSeatModal(member);
                         },
                         icon: const Icon(Icons.chair_alt_rounded, size: 14),
-                        label: const Text('Re-allot Seat', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                        label: const FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text('Re-allot Seat', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                        ),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: AppColors.orange600,
                           side: const BorderSide(color: AppColors.orange300),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
                         ),
                       ),
                     ),
@@ -1845,12 +1892,15 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                           _openMemberProfileModal(member);
                         },
                         icon: const Icon(Icons.person_outline_rounded, size: 14),
-                        label: const Text('Profile', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                        label: const FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text('Profile', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                        ),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: AppColors.indigo950,
                           side: const BorderSide(color: AppColors.indigo200),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
                         ),
                       ),
                     ),
@@ -2571,14 +2621,18 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                                       child: ElevatedButton.icon(
                                         onPressed: () => _sendWhatsAppReminder(m),
                                         icon: const Icon(Icons.chat_bubble_outline_rounded, size: 14, color: Colors.white),
-                                        label: const Text(
-                                          'WhatsApp Reminder',
-                                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white),
+                                        label: const FittedBox(
+                                          fit: BoxFit.scaleDown,
+                                          child: Text(
+                                            'WhatsApp Reminder',
+                                            maxLines: 1,
+                                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white),
+                                          ),
                                         ),
                                         style: ElevatedButton.styleFrom(
                                           backgroundColor: const Color(0xFF16A34A),
                                           elevation: 0,
-                                          padding: const EdgeInsets.symmetric(vertical: 9),
+                                          padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 6),
                                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                                         ),
                                       ),
@@ -2588,14 +2642,18 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                                       child: ElevatedButton.icon(
                                         onPressed: () => _openCollectDueModal(m),
                                         icon: const Icon(Icons.payments_rounded, size: 14, color: Colors.white),
-                                        label: Text(
-                                          'Collect ₹${m.monthlyFee?.toInt() ?? 499}',
-                                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white),
+                                        label: FittedBox(
+                                          fit: BoxFit.scaleDown,
+                                          child: Text(
+                                            'Collect ₹${m.monthlyFee?.toInt() ?? 499}',
+                                            maxLines: 1,
+                                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white),
+                                          ),
                                         ),
                                         style: ElevatedButton.styleFrom(
                                           backgroundColor: AppColors.orange500,
                                           elevation: 0,
-                                          padding: const EdgeInsets.symmetric(vertical: 9),
+                                          padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 6),
                                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                                         ),
                                       ),
@@ -3198,12 +3256,12 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Container(
-                      width: 62,
-                      height: 62,
+                      width: 68,
+                      height: 68,
+                      padding: const EdgeInsets.all(3),
                       decoration: BoxDecoration(
-                        color: AppColors.orange500,
-                        borderRadius: BorderRadius.circular(22),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.25), width: 2),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: AppColors.orange400, width: 2.5),
                         boxShadow: [
                           BoxShadow(
                             color: AppColors.orange500.withValues(alpha: 0.35),
@@ -3212,15 +3270,29 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                           ),
                         ],
                       ),
-                      clipBehavior: Clip.antiAlias,
-                      alignment: Alignment.center,
-                      child: _ownerPhotoUrl != null && _ownerPhotoUrl!.isNotEmpty
-                          ? Image.network(
-                              _resolvePhotoUrl(_ownerPhotoUrl) ?? _ownerPhotoUrl!,
-                              fit: BoxFit.cover,
-                              width: 62,
-                              height: 62,
-                              errorBuilder: (_, __, ___) => Text(
+                      child: Container(
+                        decoration: const BoxDecoration(
+                          color: AppColors.orange500,
+                          shape: BoxShape.circle,
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        alignment: Alignment.center,
+                        child: _ownerPhotoUrl != null && _ownerPhotoUrl!.isNotEmpty
+                            ? Image.network(
+                                _resolvePhotoUrl(_ownerPhotoUrl) ?? _ownerPhotoUrl!,
+                                fit: BoxFit.cover,
+                                width: 62,
+                                height: 62,
+                                errorBuilder: (_, __, ___) => Text(
+                                  _getInitials(_ownerName),
+                                  style: const TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              )
+                            : Text(
                                 _getInitials(_ownerName),
                                 style: const TextStyle(
                                   fontSize: 22,
@@ -3228,15 +3300,7 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                                   color: Colors.white,
                                 ),
                               ),
-                            )
-                          : Text(
-                              _getInitials(_ownerName),
-                              style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w900,
-                                color: Colors.white,
-                              ),
-                            ),
+                      ),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
@@ -3495,6 +3559,7 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                             decoration: BoxDecoration(
                               color: AppColors.orange500,
                               shape: BoxShape.circle,
+                              border: Border.all(color: AppColors.orange400, width: 3),
                               boxShadow: [
                                 BoxShadow(
                                   color: AppColors.orange500.withValues(alpha: 0.25),
@@ -4432,14 +4497,13 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
           ),
         ],
       ),
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _buildNavTab(PartnerTab.overview, Icons.grid_view_rounded, 'Overview'),
-          _buildNavTab(PartnerTab.seats, Icons.apartment, 'Seats'),
-          _buildNavTab(PartnerTab.members, Icons.people_alt_rounded, 'Members'),
-          _buildNavTab(PartnerTab.profile, Icons.person_rounded, 'Profile'),
+          Expanded(child: _buildNavTab(PartnerTab.overview, Icons.grid_view_rounded, 'Overview')),
+          Expanded(child: _buildNavTab(PartnerTab.seats, Icons.apartment, 'Seats')),
+          Expanded(child: _buildNavTab(PartnerTab.members, Icons.people_alt_rounded, 'Members')),
+          Expanded(child: _buildNavTab(PartnerTab.profile, Icons.person_rounded, 'Profile')),
         ],
       ),
     );
@@ -4450,7 +4514,7 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
     return InkWell(
       onTap: () => setState(() => _activeTab = tab),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -4460,12 +4524,16 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
               color: isActive ? AppColors.orange500 : AppColors.slate400,
             ),
             const SizedBox(height: 3),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: isActive ? FontWeight.w900 : FontWeight.w700,
-                color: isActive ? AppColors.orange500 : AppColors.slate400,
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                label,
+                maxLines: 1,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: isActive ? FontWeight.w900 : FontWeight.w700,
+                  color: isActive ? AppColors.orange500 : AppColors.slate400,
+                ),
               ),
             ),
           ],
@@ -4478,105 +4546,360 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
   // OWNER MODALS
   // ==========================================
   Future<void> _openStandeeQRModal() async {
-    String payload = _businessProfile?.qrPayload ?? '';
-    if (payload.isEmpty) {
-      final res = await ApiService.getStandeeQr();
-      if (res.success && res.data != null && mounted) {
-        payload = res.data!['qrPayload']?.toString() ?? '';
+    Timer? countdownTimer;
+    int remainingSeconds = 120;
+    bool isLoading = true;
+    String? qrPayload;
+    String? randomCode;
+    String? errorMessage;
+
+    void startTimer(void Function(void Function()) setModalState) {
+      countdownTimer?.cancel();
+      countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (remainingSeconds > 1) {
+          setModalState(() {
+            remainingSeconds--;
+          });
+        } else {
+          timer.cancel();
+          setModalState(() {
+            remainingSeconds = 0;
+          });
+        }
+      });
+    }
+
+    Future<void> generateQr(void Function(void Function()) setModalState) async {
+      countdownTimer?.cancel();
+      setModalState(() {
+        isLoading = true;
+        errorMessage = null;
+      });
+
+      final res = await ApiService.generateDynamicAttendanceQr();
+      if (!mounted) return;
+
+      if (res.success && res.data != null) {
+        final data = res.data!;
+        setModalState(() {
+          isLoading = false;
+          qrPayload = data['qrCodePayload']?.toString() ?? data['qrPayload']?.toString() ?? '';
+          randomCode = data['randomCode']?.toString() ?? '';
+          final inSec = (data['expiresInSeconds'] as num?)?.toInt() ?? 120;
+          remainingSeconds = inSec > 0 ? inSec : 120;
+        });
+        startTimer(setModalState);
+      } else {
+        setModalState(() {
+          isLoading = false;
+          errorMessage = res.message ?? 'Failed to generate dynamic attendance QR';
+        });
       }
     }
-    if (!mounted) return;
 
     showDialog(
       context: context,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      barrierDismissible: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) {
+          if (isLoading && qrPayload == null && errorMessage == null) {
+            generateQr(setModalState);
+          }
+
+          final isExpired = remainingSeconds <= 0 && !isLoading && qrPayload != null;
+          final minutes = (remainingSeconds ~/ 60).toString().padLeft(2, '0');
+          final seconds = (remainingSeconds % 60).toString().padLeft(2, '0');
+
+          return Dialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Text(
-                        'OFFICIAL ATTENDANCE QR',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w900,
-                          color: AppColors.orange500,
-                          letterSpacing: 1,
-                        ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: const [
+                          Text(
+                            'LIVE ATTENDANCE QR',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.orange500,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                          Text(
+                            'Dynamic Attendance',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.slate900,
+                            ),
+                          ),
+                        ],
                       ),
-                      Text(
-                        'Attendance Standee',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w900,
-                          color: AppColors.slate900,
-                        ),
+                      IconButton(
+                        onPressed: () {
+                          countdownTimer?.cancel();
+                          Navigator.of(ctx).pop();
+                        },
+                        icon: const Icon(Icons.close),
                       ),
                     ],
                   ),
-                  IconButton(
-                    onPressed: () => Navigator.of(ctx).pop(),
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
-              QRCodeGraphic(size: 190, data: payload.isNotEmpty ? payload : null),
-              const SizedBox(height: 16),
-              Text(
-                _businessProfile?.displayName ?? 'Study Hub Library',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w900,
-                  color: AppColors.slate900,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                _businessProfile?.address != null && _businessProfile!.address.isNotEmpty
-                    ? _businessProfile!.address
-                    : 'Show this QR to students for Attendance Check-in & Punch-out.',
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 11, color: AppColors.slate500),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: AppColors.emerald50,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.emerald200),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.check_circle_rounded, size: 13, color: AppColors.emerald600),
-                    SizedBox(width: 5),
+                  const SizedBox(height: 16),
+
+                  if (isLoading) ...[
+                    Container(
+                      height: 220,
+                      alignment: Alignment.center,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: const [
+                          CircularProgressIndicator(color: AppColors.orange500),
+                          SizedBox(height: 16),
+                          Text(
+                            'Generating Secure Dynamic QR...',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.slate600,
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            'Valid for 2 minutes on student scan',
+                            style: TextStyle(fontSize: 11, color: AppColors.slate400),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ] else if (errorMessage != null) ...[
+                    Container(
+                      height: 200,
+                      alignment: Alignment.center,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 42),
+                          const SizedBox(height: 12),
+                          Text(
+                            errorMessage!,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontSize: 12, color: Colors.redAccent, fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 16),
+                          ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.orange500,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            onPressed: () => generateQr(setModalState),
+                            icon: const Icon(Icons.refresh_rounded, color: Colors.white, size: 16),
+                            label: const Text('Retry Generation', style: TextStyle(color: Colors.white)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ] else if (isExpired) ...[
+                    // Expired State
+                    Container(
+                      height: 220,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: Colors.red.withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.red.withOpacity(0.2)),
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: Colors.red.withOpacity(0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.timer_off_outlined, color: Colors.red, size: 40),
+                          ),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'QR Code Expired',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.red,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 24),
+                            child: Text(
+                              'The 2-minute dynamic attendance window has expired. Press the button below to generate a new QR code.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 11.5, color: AppColors.slate500),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    CustomButton(
+                      label: 'Regenerate Attendance QR',
+                      onPressed: () => generateQr(setModalState),
+                    ),
+                  ] else ...[
+                    // Active Dynamic QR
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.04),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: QRCodeGraphic(
+                        size: 190,
+                        data: qrPayload,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Countdown timer & Passcode
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: remainingSeconds < 30 ? Colors.red.withOpacity(0.1) : AppColors.orange50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: remainingSeconds < 30 ? Colors.red.withOpacity(0.3) : AppColors.orange200,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.timer_outlined,
+                            size: 16,
+                            color: remainingSeconds < 30 ? Colors.red : AppColors.orange600,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Expires in: $minutes:$seconds',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w900,
+                              color: remainingSeconds < 30 ? Colors.red : AppColors.orange700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+
+                    if (randomCode != null && randomCode!.isNotEmpty) ...[
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Text(
+                            'Passcode: ',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.slate500),
+                          ),
+                          Text(
+                            '${randomCode!.substring(0, 3)} ${randomCode!.substring(3)}',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.slate900,
+                              letterSpacing: 2,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                    ],
+
                     Text(
-                      'Ready for Student Check-in / Punch-out Scan',
-                      style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: AppColors.emerald700),
+                      _businessProfile?.displayName ?? 'Study Hub Library',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.slate900,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    const Text(
+                      'Students must scan within 2 minutes to verify attendance.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 10.5, color: AppColors.slate500),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Action buttons
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.orange600,
+                              side: const BorderSide(color: AppColors.orange300),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            onPressed: () => generateQr(setModalState),
+                            icon: const Icon(Icons.refresh_rounded, size: 16),
+                            label: const FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                'Regenerate QR',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.slate800,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            onPressed: () {
+                              countdownTimer?.cancel();
+                              Navigator.of(ctx).pop();
+                            },
+                            child: const FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                'Close',
+                                style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
-                ),
+                ],
               ),
-              const SizedBox(height: 20),
-              CustomButton(
-                label: 'Close Standee',
-                onPressed: () => Navigator.of(ctx).pop(),
-              ),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
-    );
+    ).then((_) {
+      countdownTimer?.cancel();
+    });
   }
 
   Future<void> _confirmRemoveMember(MemberInfo m) async {
@@ -4698,30 +5021,44 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: AppColors.indigo50,
-                              borderRadius: BorderRadius.circular(14),
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: AppColors.indigo50,
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              alignment: Alignment.center,
+                              child: Text(
+                                studentName.isNotEmpty ? studentName[0].toUpperCase() : 'S',
+                                style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.indigo950, fontSize: 18),
+                              ),
                             ),
-                            alignment: Alignment.center,
-                            child: Text(
-                              studentName.isNotEmpty ? studentName[0].toUpperCase() : 'S',
-                              style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.indigo950, fontSize: 18),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    studentName,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+                                  ),
+                                  Text(
+                                    'ID: $code · $phone',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 11, color: AppColors.slate500),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(studentName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
-                              Text('ID: $code · $phone', style: const TextStyle(fontSize: 11, color: AppColors.slate500)),
-                            ],
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                       IconButton(
                         onPressed: () => Navigator.pop(ctx),
@@ -4767,7 +5104,7 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                             _openReallotSeatModal(m);
                           },
                           icon: const Icon(Icons.chair_alt_rounded, size: 14),
-                          label: const Text('Re-allot Seat', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                          label: const FittedBox(fit: BoxFit.scaleDown, child: Text('Re-allot Seat', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800))),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: AppColors.orange600,
                             side: const BorderSide(color: AppColors.orange300),
@@ -4783,7 +5120,7 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                             _confirmRemoveMember(m);
                           },
                           icon: const Icon(Icons.delete_outline_rounded, size: 14),
-                          label: const Text('Remove', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                          label: const FittedBox(fit: BoxFit.scaleDown, child: Text('Remove', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800))),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: Colors.red,
                             side: const BorderSide(color: Color(0xFFFECACA)),
@@ -6602,9 +6939,8 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                   const SizedBox(height: 20),
 
                   // Submit Button
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(minWidth: double.infinity, minHeight: 48),
                     child: ElevatedButton(
                       onPressed: isSubmitting
                           ? null
@@ -6657,9 +6993,12 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                       ),
                       child: isSubmitting
                           ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                          : const Text(
-                              'Confirm Collection & Renew',
-                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Colors.white),
+                          : const FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                'Confirm Collection & Renew',
+                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Colors.white),
+                              ),
                             ),
                     ),
                   ),
@@ -6876,9 +7215,8 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                   const SizedBox(height: 18),
 
                   // Save Button
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(minWidth: double.infinity, minHeight: 48),
                     child: ElevatedButton(
                       onPressed: isSubmitting
                           ? null
@@ -6927,9 +7265,12 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                       ),
                       child: isSubmitting
                           ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                          : const Text(
-                              'Save Changes',
-                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Colors.white),
+                          : const FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                'Save Changes',
+                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Colors.white),
+                              ),
                             ),
                     ),
                   ),

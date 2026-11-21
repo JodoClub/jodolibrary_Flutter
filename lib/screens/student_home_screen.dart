@@ -9,7 +9,6 @@ import '../services/auth_storage.dart';
 import '../theme/app_theme.dart';
 import '../widgets/brand_logo.dart';
 import '../widgets/custom_button.dart';
-import '../widgets/qr_code_widget.dart';
 import '../widgets/common_widgets.dart';
 import 'library_details_screen.dart';
 
@@ -34,6 +33,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
   // Real Student Profile State
   String _studentName = 'Student Member';
   String _studentPhone = '';
+  String? _studentPhotoUrl;
   String _examCategory = 'UPSC / Civil Services';
   String _emergencyContact = '';
   String _gender = 'Other';
@@ -56,9 +56,11 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _initDefaultCalendarAndWeekly();
     _loadStudentProfileData();
     _fetchExploreLibraries();
     _loadStudentRequestsAndBookings();
+    _loadAttendanceAndProductivity();
   }
 
   @override
@@ -72,6 +74,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
     if (state == AppLifecycleState.resumed) {
       _loadStudentRequestsAndBookings();
       _loadStudentProfileData();
+      _loadAttendanceAndProductivity();
     }
   }
 
@@ -188,12 +191,30 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
     }
   }
 
+  String? _resolvePhotoUrl(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    final trimmed = raw.trim();
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+    if (trimmed.startsWith('/')) {
+      final host = ApiConfig.baseUrl.replaceAll('/api/v1', '');
+      return '$host$trimmed';
+    }
+    return trimmed;
+  }
+
   Future<void> _loadStudentProfileData() async {
     final stored = await AuthStorage.getStoredProfile();
     if (mounted) {
       setState(() {
         if (stored['name'] != null && stored['name'].toString().trim().isNotEmpty) {
           _studentName = stored['name'].toString().trim();
+        }
+        if (stored['avatarUrl'] != null && stored['avatarUrl'].toString().trim().isNotEmpty) {
+          _studentPhotoUrl = _resolvePhotoUrl(stored['avatarUrl'].toString().trim());
+        } else if (stored['photoUrl'] != null && stored['photoUrl'].toString().trim().isNotEmpty) {
+          _studentPhotoUrl = _resolvePhotoUrl(stored['photoUrl'].toString().trim());
         }
         if (stored['phone'] != null) {
           _studentPhone = stored['phone'].toString().trim();
@@ -228,6 +249,15 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
         setState(() {
           if (user?['name'] != null && user!['name'].toString().trim().isNotEmpty) {
             _studentName = user['name'].toString().trim();
+          }
+          if (user?['avatarUrl'] != null && user!['avatarUrl'].toString().trim().isNotEmpty) {
+            _studentPhotoUrl = _resolvePhotoUrl(user['avatarUrl'].toString().trim());
+          } else if (user?['photoUrl'] != null && user!['photoUrl'].toString().trim().isNotEmpty) {
+            _studentPhotoUrl = _resolvePhotoUrl(user['photoUrl'].toString().trim());
+          } else if (user?['avatar'] != null && user!['avatar'].toString().trim().isNotEmpty) {
+            _studentPhotoUrl = _resolvePhotoUrl(user['avatar'].toString().trim());
+          } else if (profile?['photoUrl'] != null && profile!['photoUrl'].toString().trim().isNotEmpty) {
+            _studentPhotoUrl = _resolvePhotoUrl(profile['photoUrl'].toString().trim());
           }
           if (user?['mobile'] != null) {
             _studentPhone = user!['mobile'].toString().trim();
@@ -345,19 +375,8 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
     });
   }
 
-  Future<void> _performPunchIn() async {
-    String? payload = _activeLibraryModel?.qrPayload ?? _activeLibraryData?['qrPayload']?.toString();
-    if (payload == null || payload.isEmpty) {
-      final actRes = await ApiService.getActiveLibraryDetails();
-      if (actRes.success && actRes.data != null) {
-        payload = actRes.data!['qrPayload']?.toString();
-      }
-    }
-    if (payload != null && payload.isNotEmpty) {
-      await _handleQrAttendanceScan(payload);
-    } else {
-      _openScannerModal();
-    }
+  void _performPunchIn() {
+    _openScannerModal();
   }
 
   Future<void> _performPunchOut() async {
@@ -377,6 +396,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
         session != null && session.isNotEmpty ? 'Session: $session · Exit recorded at $timeStr' : 'Recorded at $timeStr',
       );
       _loadStudentRequestsAndBookings();
+      _loadAttendanceAndProductivity();
     } else {
       setState(() => _scannerStage = 'aiming');
       _showToast('Punch Out Failed', res.message ?? 'Failed to punch out');
@@ -430,6 +450,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
       }
 
       _loadStudentRequestsAndBookings();
+      _loadAttendanceAndProductivity();
     } else {
       if (setModalState != null) {
         setModalState(() => _scannerStage = 'aiming');
@@ -443,7 +464,11 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
       String errorTitle = 'Verification Failed ❌';
       String errorBody = msg;
 
-      if (code == 'NO_ACTIVE_MEMBERSHIP') {
+      if (code == 'QR_EXPIRED' || msg.toLowerCase().contains('expired') || code == 'INVALID_QR') {
+        errorTitle = 'QR Expired or Invalid ❌';
+        errorBody =
+            'This attendance QR code is not valid or has expired (valid for 2 minutes). Please ask the library owner to generate a fresh QR code.';
+      } else if (code == 'NO_ACTIVE_MEMBERSHIP') {
         errorTitle = 'Not Enrolled in Library ❌';
         errorBody =
             'You do not have an active membership in this library.\nPlease contact the library owner to enroll and allot your seat.';
@@ -502,46 +527,291 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
     _showToast('Plan Renewed Successfully! 🎉', 'Membership extended to $_planValidityDate');
   }
 
-  final List<CalendarDayInfo> _calendarDays = [
-    const CalendarDayInfo(day: 1, status: 'present', inTime: '08:15 AM', outTime: '07:30 PM', hours: '11h 15m'),
-    const CalendarDayInfo(day: 2, status: 'present', inTime: '08:20 AM', outTime: '08:00 PM', hours: '11h 40m'),
-    const CalendarDayInfo(day: 3, status: 'present', inTime: '09:00 AM', outTime: '06:30 PM', hours: '9h 30m'),
-    const CalendarDayInfo(day: 4, status: 'holiday', note: 'Sunday · Weekly Off'),
-    const CalendarDayInfo(day: 5, status: 'present', inTime: '08:05 AM', outTime: '07:45 PM', hours: '11h 40m'),
-    const CalendarDayInfo(day: 6, status: 'present', inTime: '08:10 AM', outTime: '08:10 PM', hours: '12h 00m'),
-    const CalendarDayInfo(day: 7, status: 'present', inTime: '08:30 AM', outTime: '07:15 PM', hours: '10h 45m'),
-    const CalendarDayInfo(day: 8, status: 'present', inTime: '08:15 AM', outTime: '07:30 PM', hours: '11h 15m'),
-    const CalendarDayInfo(day: 9, status: 'present', inTime: '08:00 AM', outTime: '08:00 PM', hours: '12h 00m'),
-    const CalendarDayInfo(day: 10, status: 'present', inTime: '08:45 AM', outTime: '07:00 PM', hours: '10h 15m'),
-    const CalendarDayInfo(day: 11, status: 'half-day', inTime: '09:00 AM', outTime: '01:30 PM', hours: '4h 30m', note: 'Optional Sunday Shift'),
-    const CalendarDayInfo(day: 12, status: 'present', inTime: '08:10 AM', outTime: '07:50 PM', hours: '11h 40m'),
-    const CalendarDayInfo(day: 13, status: 'present', inTime: '08:15 AM', outTime: '08:00 PM', hours: '11h 45m'),
-    const CalendarDayInfo(day: 14, status: 'absent', note: 'Medical Leave (Prior notice)'),
-    const CalendarDayInfo(day: 15, status: 'present', inTime: '08:30 AM', outTime: '07:30 PM', hours: '11h 00m'),
-    const CalendarDayInfo(day: 16, status: 'present', inTime: '08:00 AM', outTime: '08:15 PM', hours: '12h 15m'),
-    const CalendarDayInfo(day: 17, status: 'present', inTime: '08:30 AM', outTime: '07:00 PM', hours: '10h 30m'),
-    const CalendarDayInfo(day: 18, status: 'half-day', inTime: '10:00 AM', outTime: '02:45 PM', hours: '4h 45m', note: 'Afternoon Revision Shift'),
-    const CalendarDayInfo(day: 19, status: 'present', inTime: '08:10 AM', outTime: '08:00 PM', hours: '11h 50m'),
-    const CalendarDayInfo(day: 20, status: 'present', inTime: '08:15 AM', outTime: 'Active (Inside)', hours: '6h 45m so far', note: 'Today'),
-    ...List.generate(11, (i) {
-      final day = 21 + i;
+  // Real Attendance Log State
+  String _calendarMonthLabel = '';
+  int _calendarFirstDayOffset = 0;
+  List<CalendarDayInfo> _calendarDays = [];
+  int _presentDaysCount = 0;
+  int _absentDaysCount = 0;
+  int _halfDaysCount = 0;
+  int _holidaysCount = 0;
+  int _totalRecordedDays = 0;
+
+  // Real Productivity Analytics State
+  double _avgDailyHours = 0.0;
+  String _weeklyTrendTag = '+0.0 hrs/wk';
+  double _thisMonthStudyHours = 0.0;
+  int _monthlyGoalHours = 200;
+  int _currentStreakDays = 0;
+  int _bestStreakDays = 0;
+  double _totalWeeklyHours = 0.0;
+  List<StudyHoursInfo> _weeklyStudyHours = [];
+
+  CalendarDayInfo get _currentSelectedDayInfo {
+    if (_calendarDays.isEmpty) {
       return CalendarDayInfo(
-        day: day,
-        status: day == 25 ? 'holiday' : 'upcoming',
-        note: day == 25 ? 'Sunday · Library Maintenance' : 'Scheduled Shift',
+        day: DateTime.now().day,
+        status: _isCheckedIn ? 'present' : 'upcoming',
+        inTime: _isCheckedIn ? _checkInTime : null,
+        outTime: _isCheckedIn ? 'Active (Inside)' : null,
+        hours: _isCheckedIn ? 'In Progress' : null,
+        note: _isCheckedIn ? 'Today · Active Inside' : 'Today',
       );
-    }),
+    }
+    return _calendarDays.firstWhere(
+      (d) => d.day == _selectedCalendarDay,
+      orElse: () => _calendarDays.first,
+    );
+  }
+
+  StudyHoursInfo get _currentActiveBarInfo {
+    if (_weeklyStudyHours.isEmpty) {
+      return const StudyHoursInfo(
+        day: 'Today',
+        fullDay: 'Today',
+        hours: 0.0,
+        focus: 'No sessions recorded yet',
+        isToday: true,
+      );
+    }
+    final idx = _activeBarDay.clamp(0, _weeklyStudyHours.length - 1);
+    return _weeklyStudyHours[idx];
+  }
+
+  static const List<String> _monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
   ];
 
-  final List<StudyHoursInfo> _weeklyStudyHours = const [
-    StudyHoursInfo(day: 'Mon', fullDay: 'Monday, 19 Oct', hours: 8.5, focus: 'Indian Polity & Laxmikanth revision'),
-    StudyHoursInfo(day: 'Tue', fullDay: 'Tuesday, 20 Oct (Today)', hours: 7.0, focus: 'Economics & Budget Analysis', isToday: true),
-    StudyHoursInfo(day: 'Wed', fullDay: 'Wednesday, 14 Oct', hours: 9.2, focus: 'Geography Mapping & Answer Writing'),
-    StudyHoursInfo(day: 'Thu', fullDay: 'Thursday, 15 Oct', hours: 6.5, focus: 'Modern History & Test Series'),
-    StudyHoursInfo(day: 'Fri', fullDay: 'Friday, 16 Oct', hours: 8.0, focus: 'CSAT Math & Comprehension'),
-    StudyHoursInfo(day: 'Sat', fullDay: 'Saturday, 17 Oct', hours: 10.5, focus: 'Full Length Mock & Evaluation'),
-    StudyHoursInfo(day: 'Sun', fullDay: 'Sunday, 18 Oct', hours: 4.8, focus: 'Weekly Current Affairs Digest'),
+  static const List<String> _monthAbbrs = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
   ];
+
+  static const List<String> _weekdayNames = [
+    'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'
+  ];
+
+  String _getMonthName(int month) => (month >= 1 && month <= 12) ? _monthNames[month - 1] : '';
+  String _getMonthAbbr(int month) => (month >= 1 && month <= 12) ? _monthAbbrs[month - 1] : '';
+  String _getWeekdayName(int weekday) => (weekday >= 1 && weekday <= 7) ? _weekdayNames[weekday - 1] : '';
+
+  void _initDefaultCalendarAndWeekly() {
+    final now = DateTime.now();
+    final year = now.year;
+    final month = now.month;
+    final daysInMonth = DateTime(year, month + 1, 0).day;
+    final firstWeekday = DateTime(year, month, 1).weekday;
+    _calendarFirstDayOffset = (firstWeekday - 1) % 7;
+    _calendarMonthLabel = '${_getMonthName(month)} $year';
+    _selectedCalendarDay = now.day.clamp(1, daysInMonth);
+
+    _calendarDays = List.generate(daysInMonth, (i) {
+      final day = i + 1;
+      final isSunday = DateTime(year, month, day).weekday == DateTime.sunday;
+      if (day == now.day) {
+        return CalendarDayInfo(
+          day: day,
+          status: _isCheckedIn ? 'present' : 'upcoming',
+          inTime: _isCheckedIn ? _checkInTime : null,
+          outTime: _isCheckedIn ? 'Active (Inside)' : null,
+          hours: _isCheckedIn ? 'In Progress' : null,
+          note: _isCheckedIn ? 'Today · Active Inside' : 'Today',
+        );
+      }
+      return CalendarDayInfo(
+        day: day,
+        status: isSunday ? 'holiday' : (day < now.day ? 'absent' : 'upcoming'),
+        note: isSunday ? 'Sunday · Weekly Off' : (day < now.day ? 'No Log Recorded' : 'Scheduled Shift'),
+      );
+    });
+
+    _presentDaysCount = _isCheckedIn ? 1 : 0;
+    _absentDaysCount = 0;
+    _halfDaysCount = 0;
+    _holidaysCount = _calendarDays.where((d) => d.status == 'holiday').length;
+    _totalRecordedDays = _presentDaysCount;
+
+    // Default 7 days of current week
+    final currentWeekday = now.weekday; // 1 = Mon ... 7 = Sun
+    final monday = now.subtract(Duration(days: currentWeekday - 1));
+    _weeklyStudyHours = List.generate(7, (i) {
+      final d = monday.add(Duration(days: i));
+      final isToday = d.year == now.year && d.month == now.month && d.day == now.day;
+      final dayAbbr = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][i];
+      final full = '${_getWeekdayName(d.weekday)}, ${d.day} ${_getMonthAbbr(d.month)}${isToday ? ' (Today)' : ''}';
+      return StudyHoursInfo(
+        day: dayAbbr,
+        fullDay: full,
+        hours: 0.0,
+        focus: isToday ? 'Self Study & Library Session' : 'Rest / No Session Recorded',
+        isToday: isToday,
+      );
+    });
+    _activeBarDay = (currentWeekday - 1).clamp(0, 6);
+  }
+
+  Future<void> _loadAttendanceAndProductivity() async {
+    final now = DateTime.now();
+    final currentYear = now.year;
+    final currentMonth = now.month;
+
+    // Load Attendance
+    try {
+      final attRes = await ApiService.getStudentMonthlyAttendance(
+        month: currentMonth,
+        year: currentYear,
+      );
+      if (attRes.success && attRes.data != null && mounted) {
+        final data = attRes.data!;
+        final monthStr = data['month']?.toString() ?? '${_getMonthName(currentMonth)} $currentYear';
+        final summary = data['summary'] as Map<String, dynamic>? ?? {};
+        final rawDays = (data['days'] as List?)?.whereType<Map<String, dynamic>>().toList() ?? [];
+
+        final daysMap = <int, Map<String, dynamic>>{};
+        for (final item in rawDays) {
+          final d = (item['day'] as num?)?.toInt();
+          if (d != null) daysMap[d] = item;
+        }
+
+        final daysInMonth = DateTime(currentYear, currentMonth + 1, 0).day;
+        final firstWeekday = DateTime(currentYear, currentMonth, 1).weekday; // 1 = Mon, 7 = Sun
+        final firstOffset = (firstWeekday - 1) % 7;
+
+        final newCalendarDays = <CalendarDayInfo>[];
+        for (int d = 1; d <= daysInMonth; d++) {
+          final dayDate = DateTime(currentYear, currentMonth, d);
+          final isSunday = dayDate.weekday == DateTime.sunday;
+          final isToday = d == now.day;
+          final isPast = d < now.day;
+
+          if (isToday && _isCheckedIn) {
+            newCalendarDays.add(CalendarDayInfo(
+              day: d,
+              status: 'present',
+              inTime: _checkInTime,
+              outTime: 'Active (Inside)',
+              hours: 'In Progress',
+              note: 'Today · Active Inside Library',
+            ));
+          } else if (daysMap.containsKey(d)) {
+            final entry = daysMap[d]!;
+            final rawStatus = (entry['status'] ?? 'present').toString().toLowerCase().replaceAll('_', '-');
+            newCalendarDays.add(CalendarDayInfo(
+              day: d,
+              status: rawStatus,
+              inTime: entry['inTime']?.toString(),
+              outTime: entry['outTime']?.toString(),
+              hours: entry['hours']?.toString(),
+              note: entry['note']?.toString() ?? (rawStatus == 'present' ? 'Present' : null),
+            ));
+          } else if (isPast) {
+            newCalendarDays.add(CalendarDayInfo(
+              day: d,
+              status: isSunday ? 'holiday' : 'absent',
+              note: isSunday ? 'Sunday · Weekly Off' : 'No Log Recorded',
+            ));
+          } else {
+            newCalendarDays.add(CalendarDayInfo(
+              day: d,
+              status: isSunday ? 'holiday' : 'upcoming',
+              note: isSunday ? 'Sunday · Library Maintenance' : 'Scheduled Shift',
+            ));
+          }
+        }
+
+        final pCount = (summary['presentDays'] as num?)?.toInt() ??
+            newCalendarDays.where((d) => d.status == 'present').length;
+        final aCount = (summary['absentDays'] as num?)?.toInt() ??
+            newCalendarDays.where((d) => d.status == 'absent').length;
+        final hfCount = (summary['halfDays'] as num?)?.toInt() ??
+            newCalendarDays.where((d) => d.status == 'half-day').length;
+        final holCount = (summary['holidays'] as num?)?.toInt() ??
+            newCalendarDays.where((d) => d.status == 'holiday').length;
+
+        setState(() {
+          _calendarMonthLabel = monthStr;
+          _calendarFirstDayOffset = firstOffset;
+          _calendarDays = newCalendarDays;
+          _presentDaysCount = pCount;
+          _absentDaysCount = aCount;
+          _halfDaysCount = hfCount;
+          _holidaysCount = holCount;
+          _totalRecordedDays = pCount + aCount + hfCount;
+          if (_selectedCalendarDay < 1 || _selectedCalendarDay > daysInMonth) {
+            _selectedCalendarDay = now.day.clamp(1, daysInMonth);
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading attendance: $e');
+    }
+
+    // Load Productivity
+    try {
+      final prodRes = await ApiService.getStudentProductivity();
+      if (prodRes.success && prodRes.data != null && mounted) {
+        final data = prodRes.data!;
+        final metrics = data['metrics'] as Map<String, dynamic>? ?? {};
+        final weeklyGraph = data['weeklyGraph'] as Map<String, dynamic>? ?? {};
+        final graphDays = (weeklyGraph['days'] as List?)?.whereType<Map<String, dynamic>>().toList() ?? [];
+
+        final newWeekly = <StudyHoursInfo>[];
+        int todayIdx = -1;
+
+        for (int i = 0; i < graphDays.length; i++) {
+          final g = graphDays[i];
+          final dayAbbr = g['day']?.toString() ?? '';
+          final dateStr = g['date']?.toString() ?? '';
+          final hrs = (g['hours'] as num?)?.toDouble() ?? 0.0;
+          final isToday = g['isToday'] == true;
+
+          String fullDayLabel = dayAbbr;
+          if (dateStr.isNotEmpty) {
+            final parsedDate = DateTime.tryParse(dateStr);
+            if (parsedDate != null) {
+              fullDayLabel = '${_getWeekdayName(parsedDate.weekday)}, ${parsedDate.day} ${_getMonthAbbr(parsedDate.month)}';
+            }
+          }
+          if (isToday) {
+            fullDayLabel = '$fullDayLabel (Today)';
+            todayIdx = i;
+          }
+
+          final focusStr = g['focus']?.toString() ??
+              (hrs > 0 ? 'Self Study & Library Session' : 'Rest / No Session Recorded');
+
+          newWeekly.add(StudyHoursInfo(
+            day: dayAbbr,
+            fullDay: fullDayLabel,
+            hours: hrs,
+            focus: focusStr,
+            isToday: isToday,
+          ));
+        }
+
+        setState(() {
+          _avgDailyHours = (metrics['avgDailyHours'] as num?)?.toDouble() ?? 0.0;
+          _weeklyTrendTag = metrics['weeklyTrend']?.toString() ?? '+0.0 hrs/wk';
+          _thisMonthStudyHours = (metrics['thisMonthHours'] as num?)?.toDouble() ?? 0.0;
+          _monthlyGoalHours = (metrics['monthlyGoalHours'] as num?)?.toInt() ?? 200;
+          _currentStreakDays = (metrics['currentStreakDays'] as num?)?.toInt() ?? 0;
+          _bestStreakDays = (metrics['bestStreakDays'] as num?)?.toInt() ?? 0;
+          _totalWeeklyHours = (weeklyGraph['totalWeeklyHours'] as num?)?.toDouble() ?? 0.0;
+          if (newWeekly.isNotEmpty) {
+            _weeklyStudyHours = newWeekly;
+            if (todayIdx != -1) {
+              _activeBarDay = todayIdx;
+            } else if (_activeBarDay >= newWeekly.length) {
+              _activeBarDay = newWeekly.length - 1;
+            }
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading productivity: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -555,6 +825,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
               onRefresh: () async {
                 await _loadStudentRequestsAndBookings();
                 await _loadStudentProfileData();
+                await _loadAttendanceAndProductivity();
                 if (_activeTab == StudentTab.explore) {
                   await _fetchExploreLibraries();
                 }
@@ -661,7 +932,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
   // TAB 1: HOME (DASHBOARD)
   // ==========================================
   Widget _buildHomeTab() {
-    final selectedDayInfo = _calendarDays.firstWhere((d) => d.day == _selectedCalendarDay);
+    final selectedDayInfo = _currentSelectedDayInfo;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -676,75 +947,104 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          Container(
-                            width: 48,
-                            height: 48,
-                            decoration: BoxDecoration(
-                              color: AppColors.orange500,
-                              borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.orange500.withOpacity(0.3),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 3),
-                                ),
-                              ],
-                            ),
-                            alignment: Alignment.center,
-                            child: Text(
-                              _getInitials(_studentName),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w900,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ),
-                          Positioned(
-                            right: -2,
-                            bottom: -2,
-                            child: Container(
-                              width: 14,
-                              height: 14,
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Container(
+                              width: 50,
+                              height: 50,
+                              padding: const EdgeInsets.all(2.5),
                               decoration: BoxDecoration(
-                                color: _isCheckedIn ? AppColors.emerald500 : AppColors.slate400,
                                 shape: BoxShape.circle,
-                                border: Border.all(color: AppColors.indigo950, width: 2.5),
+                                border: Border.all(color: AppColors.orange400, width: 2.5),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: AppColors.orange500.withValues(alpha: 0.35),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: Container(
+                                decoration: const BoxDecoration(
+                                  color: AppColors.orange500,
+                                  shape: BoxShape.circle,
+                                ),
+                                clipBehavior: Clip.antiAlias,
+                                alignment: Alignment.center,
+                                child: _studentPhotoUrl != null && _studentPhotoUrl!.isNotEmpty
+                                    ? Image.network(
+                                        _resolvePhotoUrl(_studentPhotoUrl) ?? _studentPhotoUrl!,
+                                        fit: BoxFit.cover,
+                                        width: 45,
+                                        height: 45,
+                                        errorBuilder: (_, __, ___) => Text(
+                                          _getInitials(_studentName),
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w900,
+                                            fontSize: 15,
+                                          ),
+                                        ),
+                                      )
+                                    : Text(
+                                        _getInitials(_studentName),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w900,
+                                          fontSize: 15,
+                                        ),
+                                      ),
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(width: 14),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Welcome back',
-                            style: TextStyle(
-                              color: AppColors.indigo300,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
+                            Positioned(
+                              right: -1,
+                              bottom: -1,
+                              child: Container(
+                                width: 14,
+                                height: 14,
+                                decoration: BoxDecoration(
+                                  color: _isCheckedIn ? AppColors.emerald500 : AppColors.slate400,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: AppColors.indigo950, width: 2.5),
+                                ),
+                              ),
                             ),
+                          ],
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Welcome back',
+                                style: TextStyle(
+                                  color: AppColors.indigo300,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Hello, ${_getFirstName(_studentName)} 👋',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: -0.5,
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Hello, ${_getFirstName(_studentName)} 👋',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: -0.5,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                        ),
+                      ],
+                    ),
                   ),
                   InkWell(
                     borderRadius: BorderRadius.circular(50),
@@ -795,14 +1095,22 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
                         child: Row(
                           children: [
                             Container(
-                              width: 34,
-                              height: 34,
+                              width: 36,
+                              height: 36,
+                              padding: const EdgeInsets.all(2),
                               decoration: BoxDecoration(
-                                color: AppColors.orange500.withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(10),
+                                shape: BoxShape.circle,
+                                border: Border.all(color: AppColors.orange400, width: 2),
                               ),
-                              alignment: Alignment.center,
-                              child: const Icon(Icons.apartment, color: AppColors.orange400, size: 18),
+                              child: Container(
+                                decoration: const BoxDecoration(
+                                  color: AppColors.orange500,
+                                  shape: BoxShape.circle,
+                                ),
+                                clipBehavior: Clip.antiAlias,
+                                alignment: Alignment.center,
+                                child: const Icon(Icons.apartment, color: Colors.white, size: 18),
+                              ),
                             ),
                             const SizedBox(width: 10),
                             Expanded(
@@ -1085,18 +1393,22 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
                       child: ElevatedButton.icon(
                         onPressed: () => _acceptAdmissionRequest(req['requestId']?.toString() ?? ''),
                         icon: const Icon(Icons.check_circle_rounded, size: 16, color: Colors.white),
-                        label: const Text(
-                          'Accept Admission',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white,
+                        label: const FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            'Accept Admission',
+                            maxLines: 1,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.emerald600,
                           elevation: 0,
-                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         ),
                       ),
@@ -1107,17 +1419,21 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
                       child: OutlinedButton.icon(
                         onPressed: () => _rejectAdmissionRequest(req['requestId']?.toString() ?? ''),
                         icon: const Icon(Icons.close_rounded, size: 15, color: AppColors.slate600),
-                        label: const Text(
-                          'Decline',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.slate700,
+                        label: const FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            'Decline',
+                            maxLines: 1,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.slate700,
+                            ),
                           ),
                         ),
                         style: OutlinedButton.styleFrom(
                           side: const BorderSide(color: AppColors.slate300),
-                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         ),
                       ),
@@ -1183,18 +1499,22 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
             ElevatedButton.icon(
               onPressed: () => setState(() => _activeTab = StudentTab.explore),
               icon: const Icon(Icons.explore_outlined, size: 16, color: Colors.white),
-              label: const Text(
-                'Explore Top Libraries Near You',
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                  color: Colors.white,
+              label: const FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  'Explore Top Libraries Near You',
+                  maxLines: 1,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    color: Colors.white,
+                  ),
                 ),
               ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.orange500,
                 elevation: 0,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
               ),
             ),
@@ -1316,163 +1636,193 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: const [
-                            Icon(Icons.auto_awesome, color: AppColors.orange400, size: 14),
-                            SizedBox(width: 4),
-                            Text(
+                  Flexible(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        Icon(Icons.auto_awesome, color: AppColors.orange400, size: 14),
+                        SizedBox(width: 4),
+                        Flexible(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
                               'ACTIVE MEMBERSHIP',
                               style: TextStyle(
                                 color: AppColors.orange400,
                                 fontSize: 10,
                                 fontWeight: FontWeight.w900,
-                                letterSpacing: 1.2,
+                                letterSpacing: 1.0,
                               ),
                             ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          planTitle,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          shiftTitle,
-                          style: const TextStyle(
-                            color: AppColors.indigo200,
-                            fontSize: 11,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: isDueSoon
-                          ? Colors.red.withOpacity(0.25)
-                          : AppColors.emerald500.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: isDueSoon ? Colors.redAccent : AppColors.emerald400,
-                        width: 1,
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: isDueSoon
+                            ? Colors.red.withValues(alpha: 0.25)
+                            : AppColors.emerald500.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: isDueSoon ? Colors.redAccent : AppColors.emerald400,
+                          width: 1,
+                        ),
                       ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          isDueSoon ? Icons.warning_amber_rounded : Icons.check_circle_rounded,
-                          color: isDueSoon ? Colors.redAccent : AppColors.emerald300,
-                          size: 12,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          isDueSoon
-                              ? 'Renewal Due: ${daysRemaining}d left'
-                              : 'Active · Fee Paid · ${daysRemaining}d left',
-                          style: TextStyle(
-                            color: isDueSoon ? Colors.red.shade200 : AppColors.emerald300,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w900,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            isDueSoon ? Icons.warning_amber_rounded : Icons.check_circle_rounded,
+                            color: isDueSoon ? Colors.redAccent : AppColors.emerald300,
+                            size: 11,
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                isDueSoon
+                                    ? 'Renewal Due · ${daysRemaining}d left'
+                                    : 'Fee Paid · ${daysRemaining}d left',
+                                maxLines: 1,
+                                style: TextStyle(
+                                  color: isDueSoon ? Colors.red.shade200 : AppColors.emerald300,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                planTitle,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                shiftTitle,
+                style: const TextStyle(
+                  color: AppColors.indigo200,
+                  fontSize: 11,
+                ),
               ),
               const SizedBox(height: 18),
 
               // Badges: Assigned Desk & Locker
               Row(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: AppColors.orange500,
-                      borderRadius: BorderRadius.circular(14),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.orange500.withOpacity(0.3),
-                          blurRadius: 8,
-                          offset: const Offset(0, 3),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.grid_view_rounded, color: Colors.white, size: 16),
-                        const SizedBox(width: 8),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'ASSIGNED DESK',
-                              style: TextStyle(
-                                color: AppColors.orange100,
-                                fontSize: 9,
-                                fontWeight: FontWeight.w800,
-                              ),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppColors.orange500,
+                        borderRadius: BorderRadius.circular(14),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.orange500.withOpacity(0.3),
+                            blurRadius: 8,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.grid_view_rounded, color: Colors.white, size: 16),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    'ASSIGNED DESK',
+                                    style: TextStyle(
+                                      color: AppColors.orange100,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                                FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    'Seat #$seatLabel',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                            Text(
-                              'Seat #$seatLabel',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(width: 10),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: Colors.white.withOpacity(0.12)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.lock_outline, color: AppColors.indigo200, size: 16),
-                        const SizedBox(width: 8),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'LOCKER SPACE',
-                              style: TextStyle(
-                                color: AppColors.indigo300,
-                                fontSize: 9,
-                                fontWeight: FontWeight.w800,
-                              ),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: Colors.white.withOpacity(0.12)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.lock_outline, color: AppColors.indigo200, size: 16),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    'LOCKER SPACE',
+                                    style: TextStyle(
+                                      color: AppColors.indigo300,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                                FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    lockerLabel,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                            Text(
-                              lockerLabel,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -1488,27 +1838,35 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Plan Validity',
-                          style: TextStyle(
-                            color: AppColors.indigo300,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Plan Validity',
+                            style: TextStyle(
+                              color: AppColors.indigo300,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
-                        ),
-                        Text(
-                          'Valid till: $validDate',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w900,
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Valid till: $validDate',
+                              maxLines: 1,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
+                    const SizedBox(width: 10),
                     ElevatedButton.icon(
                       onPressed: () => _openRenewPlanModal(),
                       icon: Icon(
@@ -1516,18 +1874,21 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
                         size: 14,
                         color: isDueSoon ? Colors.white : AppColors.orange500,
                       ),
-                      label: Text(
-                        isDueSoon ? 'Pay / Renew' : 'Renew Plan',
-                        style: TextStyle(
-                          color: isDueSoon ? Colors.white : AppColors.indigo950,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w900,
+                      label: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          isDueSoon ? 'Pay / Renew' : 'Renew Plan',
+                          style: TextStyle(
+                            color: isDueSoon ? Colors.white : AppColors.indigo950,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w900,
+                          ),
                         ),
                       ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: isDueSoon ? AppColors.orange500 : Colors.white,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         elevation: 0,
                       ),
                     ),
@@ -1669,90 +2030,46 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
                   ],
                 ),
                 const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      flex: 3,
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(16),
-                        onTap: () => _openScannerModal(),
-                        child: Container(
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: AppColors.primary,
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppColors.primary.withValues(alpha: 0.35),
-                                blurRadius: 10,
-                                offset: const Offset(0, 3),
+                InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: () => _openScannerModal(),
+                  child: Container(
+                    height: 46,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.primary.withValues(alpha: 0.35),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    alignment: Alignment.center,
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.qr_code_scanner_rounded, size: 18, color: Colors.white),
+                        SizedBox(width: 8),
+                        Flexible(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              'Scan Attendance QR',
+                              maxLines: 1,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 13,
                               ),
-                            ],
-                          ),
-                          alignment: Alignment.center,
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
-                          child: const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.qr_code_scanner_rounded, size: 16, color: Colors.white),
-                              SizedBox(width: 6),
-                              Flexible(
-                                child: Text(
-                                  'Camera Scanner',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: 12,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      flex: 2,
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(16),
-                        onTap: _isCheckedIn ? _performPunchOut : _performPunchIn,
-                        child: Container(
-                          height: 44,
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
-                          ),
-                          alignment: Alignment.center,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.bolt, color: AppColors.amber400, size: 15),
-                              const SizedBox(width: 4),
-                              Flexible(
-                                child: Text(
-                                  _isCheckedIn ? 'Punch Out' : 'Quick Punch',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 12,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ],
             ),
@@ -1776,41 +2093,56 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
-                  Text(
-                    'ATTENDANCE LOG',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.slate400,
-                      letterSpacing: 1,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'ATTENDANCE LOG',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.slate400,
+                        letterSpacing: 1,
+                      ),
                     ),
-                  ),
-                  SizedBox(height: 2),
-                  Text(
-                    'October 2026',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.slate900,
+                    const SizedBox(height: 2),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        _calendarMonthLabel.isNotEmpty
+                            ? _calendarMonthLabel
+                            : '${_getMonthName(DateTime.now().month)} ${DateTime.now().year}',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.slate900,
+                        ),
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.indigo50,
-                  borderRadius: BorderRadius.circular(20),
+                  ],
                 ),
-                child: const Text(
-                  'Total: 20 Days Recorded',
-                  style: TextStyle(
-                    color: AppColors.indigo800,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w900,
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.indigo50,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      'Total: $_totalRecordedDays Days Recorded',
+                      maxLines: 1,
+                      style: const TextStyle(
+                        color: AppColors.indigo800,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -1840,7 +2172,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
           GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            itemCount: 3 + _calendarDays.length, // 3 empty placeholders for Thursday start
+            itemCount: _calendarFirstDayOffset + _calendarDays.length,
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 7,
               mainAxisSpacing: 5,
@@ -1848,12 +2180,12 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
               childAspectRatio: 1.0,
             ),
             itemBuilder: (context, index) {
-              if (index < 3) {
+              if (index < _calendarFirstDayOffset) {
                 return const SizedBox.shrink();
               }
-              final item = _calendarDays[index - 3];
+              final item = _calendarDays[index - _calendarFirstDayOffset];
               final isSelected = item.day == _selectedCalendarDay;
-              final isToday = item.day == 20;
+              final isToday = item.day == DateTime.now().day;
 
               Color dotColor;
               if (item.status == 'present') {
@@ -1934,7 +2266,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        'Oct ${selectedDayInfo.day}, 2026 ${selectedDayInfo.day == 20 ? "(Today)" : ""} · ${selectedDayInfo.status.toUpperCase()}',
+                        '${_getMonthAbbr(DateTime.now().month)} ${selectedDayInfo.day}, ${DateTime.now().year} ${selectedDayInfo.day == DateTime.now().day ? "(Today)" : ""} · ${selectedDayInfo.status.toUpperCase()}',
                         style: const TextStyle(
                           fontSize: 11.5,
                           fontWeight: FontWeight.w900,
@@ -1982,10 +2314,10 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
           // Legend
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: const [
-              _LegendItem(color: AppColors.emerald500, label: 'Present: 22 Days'),
-              _LegendItem(color: AppColors.rose500, label: 'Absent: 4 Days'),
-              _LegendItem(color: AppColors.amber500, label: 'Half-day: 2 Days'),
+            children: [
+              _LegendItem(color: AppColors.emerald500, label: 'Present: $_presentDaysCount Days'),
+              _LegendItem(color: AppColors.rose500, label: 'Absent: $_absentDaysCount Days'),
+              _LegendItem(color: AppColors.amber500, label: 'Half-day: $_halfDaysCount Days'),
             ],
           ),
         ],
@@ -2031,9 +2363,9 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
                 child: _buildMetricCard(
                   icon: Icons.schedule,
                   label: 'Avg. Daily',
-                  val: '7.5 hrs',
-                  tag: '+1.2 hrs/wk',
-                  tagColor: AppColors.emerald600,
+                  val: '${_avgDailyHours.toStringAsFixed(1)} hrs',
+                  tag: _weeklyTrendTag,
+                  tagColor: _weeklyTrendTag.contains('-') ? AppColors.rose500 : AppColors.emerald600,
                   iconBg: AppColors.indigo50,
                   iconColor: AppColors.indigo950,
                 ),
@@ -2043,8 +2375,8 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
                 child: _buildMetricCard(
                   icon: Icons.calendar_today,
                   label: 'This Month',
-                  val: '164 hrs',
-                  tag: 'Goal: 200h',
+                  val: '${_thisMonthStudyHours % 1 == 0 ? _thisMonthStudyHours.toInt() : _thisMonthStudyHours.toStringAsFixed(1)} hrs',
+                  tag: 'Goal: ${_monthlyGoalHours}h',
                   tagColor: AppColors.indigo800,
                   iconBg: AppColors.orange50,
                   iconColor: AppColors.orange600,
@@ -2055,8 +2387,8 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
                 child: _buildMetricCard(
                   icon: Icons.local_fire_department,
                   label: 'Streak',
-                  val: '6 Days 🔥',
-                  tag: 'Best: 14d',
+                  val: '$_currentStreakDays Days 🔥',
+                  tag: 'Best: ${_bestStreakDays}d',
                   tagColor: AppColors.orange600,
                   iconBg: AppColors.rose50,
                   iconColor: AppColors.rose600,
@@ -2102,9 +2434,9 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
                         color: AppColors.emerald50,
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Text(
-                        'Total: 54.5 hrs',
-                        style: TextStyle(
+                      child: Text(
+                        'Total: ${_totalWeeklyHours.toStringAsFixed(1)} hrs',
+                        style: const TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w900,
                           color: AppColors.emerald600,
@@ -2125,7 +2457,8 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
                       final idx = entry.key;
                       final item = entry.value;
                       final isSelected = _activeBarDay == idx;
-                      final heightPct = (item.hours / 12.0).clamp(0.0, 1.0);
+                      final maxHours = _weeklyStudyHours.fold<double>(8.0, (prev, elem) => elem.hours > prev ? elem.hours : prev);
+                      final heightPct = (item.hours / (maxHours > 0 ? maxHours : 8.0)).clamp(0.0, 1.0);
 
                       return Expanded(
                         child: GestureDetector(
@@ -2134,7 +2467,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
                             mainAxisAlignment: MainAxisAlignment.end,
                             children: [
                               Text(
-                                '${item.hours}h',
+                                '${item.hours % 1 == 0 ? item.hours.toInt() : item.hours.toStringAsFixed(1)}h',
                                 style: TextStyle(
                                   fontSize: 9,
                                   fontWeight: FontWeight.w900,
@@ -2189,23 +2522,28 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _weeklyStudyHours[_activeBarDay].fullDay,
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w900,
-                              color: AppColors.slate900,
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _currentActiveBarInfo.fullDay,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w900,
+                                color: AppColors.slate900,
+                              ),
                             ),
-                          ),
-                          Text(
-                            'Focus: ${_weeklyStudyHours[_activeBarDay].focus}',
-                            style: const TextStyle(fontSize: 10, color: AppColors.slate500),
-                          ),
-                        ],
+                            Text(
+                              'Focus: ${_currentActiveBarInfo.focus}',
+                              style: const TextStyle(fontSize: 10, color: AppColors.slate500),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
                       ),
+                      const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
@@ -2213,7 +2551,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
-                          '${_weeklyStudyHours[_activeBarDay].hours} hrs',
+                          '${_currentActiveBarInfo.hours % 1 == 0 ? _currentActiveBarInfo.hours.toInt() : _currentActiveBarInfo.hours.toStringAsFixed(1)} hrs',
                           style: const TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w900,
@@ -2262,19 +2600,31 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
             child: Icon(icon, size: 16, color: iconColor),
           ),
           const SizedBox(height: 8),
-          Text(
-            label,
-            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.slate400),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.slate400),
+            ),
           ),
           const SizedBox(height: 2),
-          Text(
-            val,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: AppColors.slate900),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              val,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: AppColors.slate900),
+            ),
           ),
           const SizedBox(height: 4),
-          Text(
-            tag,
-            style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: tagColor),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              tag,
+              style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: tagColor),
+            ),
           ),
         ],
       ),
@@ -2307,8 +2657,6 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const BrandLogo(compact: true, inverse: true),
-              const SizedBox(height: 20),
               Row(
                 children: const [
                   Icon(Icons.location_on, color: AppColors.indigo300, size: 14),
@@ -2364,35 +2712,6 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 3 Quick Action tiles
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildQuickActionCard(
-                      icon: Icons.calendar_month,
-                      label: 'Book a seat',
-                      isOrange: true,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _buildQuickActionCard(
-                      icon: Icons.schedule,
-                      label: 'My bookings',
-                      onTap: () => setState(() => _activeTab = StudentTab.bookings),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _buildQuickActionCard(
-                      icon: Icons.location_on_outlined,
-                      label: 'Near me',
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-
               // Recommended section
               if (showRecommended) ...[
                 Row(
@@ -2562,12 +2881,12 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
                 const SizedBox(height: 24),
               ],
 
-              // Nearby study spaces list
+              // Other library spaces list
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text(
-                    'Nearby study spaces',
+                    'Other Library Spaces',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.slate900),
                   ),
                   if (_isLoadingExplore)
@@ -2817,29 +3136,8 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
           padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const BrandLogo(compact: true, inverse: true),
-                  InkWell(
-                    borderRadius: BorderRadius.circular(50),
-                    onTap: () => _openNotificationsModal(),
-                    child: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.12),
-                        shape: BoxShape.circle,
-                      ),
-                      alignment: Alignment.center,
-                      child: const Icon(Icons.notifications_none, color: Colors.white, size: 22),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              const Text(
+            children: const [
+              Text(
                 'My Bookings',
                 style: TextStyle(
                   fontSize: 26,
@@ -2847,8 +3145,8 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
                   color: Colors.white,
                 ),
               ),
-              const SizedBox(height: 4),
-              const Text(
+              SizedBox(height: 4),
+              Text(
                 'Track and manage your desk reservations',
                 style: TextStyle(color: AppColors.indigo200, fontSize: 12),
               ),
@@ -3248,13 +3546,6 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
                   );
                 }),
               ],
-              const SizedBox(height: 16),
-              CustomButton(
-                label: 'Book Another Desk or Shift',
-                variant: ButtonVariant.secondary,
-                leading: const Icon(Icons.add, size: 18, color: AppColors.slate800),
-                onPressed: () => setState(() => _activeTab = StudentTab.explore),
-              ),
             ],
           ),
         ),
@@ -3281,27 +3572,50 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
               Row(
                 children: [
                   Container(
-                    width: 60,
-                    height: 60,
+                    width: 66,
+                    height: 66,
+                    padding: const EdgeInsets.all(3),
                     decoration: BoxDecoration(
-                      color: AppColors.orange500,
-                      borderRadius: BorderRadius.circular(20),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppColors.orange400, width: 2.5),
                       boxShadow: [
                         BoxShadow(
-                          color: AppColors.orange500.withValues(alpha: 0.3),
-                          blurRadius: 10,
+                          color: AppColors.orange500.withValues(alpha: 0.35),
+                          blurRadius: 12,
                           offset: const Offset(0, 4),
                         ),
                       ],
                     ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      _getInitials(_studentName),
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white,
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        color: AppColors.orange500,
+                        shape: BoxShape.circle,
                       ),
+                      clipBehavior: Clip.antiAlias,
+                      alignment: Alignment.center,
+                      child: _studentPhotoUrl != null && _studentPhotoUrl!.isNotEmpty
+                          ? Image.network(
+                              _resolvePhotoUrl(_studentPhotoUrl) ?? _studentPhotoUrl!,
+                              fit: BoxFit.cover,
+                              width: 60,
+                              height: 60,
+                              errorBuilder: (_, __, ___) => Text(
+                                _getInitials(_studentName),
+                                style: const TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w900,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            )
+                          : Text(
+                              _getInitials(_studentName),
+                              style: const TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.white,
+                              ),
+                            ),
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -3323,33 +3637,6 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
                           style: const TextStyle(fontSize: 12, color: AppColors.indigo200),
                         ),
                       ],
-                    ),
-                  ),
-                  InkWell(
-                    borderRadius: BorderRadius.circular(16),
-                    onTap: _openEditStudentProfileModal,
-                    child: Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.edit_rounded, color: Colors.white, size: 16),
-                          SizedBox(width: 4),
-                          Text(
-                            'Edit',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ],
-                      ),
                     ),
                   ),
                 ],
@@ -3437,14 +3724,22 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
                           Row(
                             children: [
                               Container(
-                                width: 36,
-                                height: 36,
+                                width: 38,
+                                height: 38,
+                                padding: const EdgeInsets.all(2),
                                 decoration: BoxDecoration(
-                                  color: AppColors.orange500.withOpacity(0.12),
-                                  borderRadius: BorderRadius.circular(12),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: AppColors.orange500, width: 2),
                                 ),
-                                alignment: Alignment.center,
-                                child: const Icon(Icons.apartment, color: AppColors.orange500, size: 20),
+                                child: Container(
+                                  decoration: const BoxDecoration(
+                                    color: AppColors.orange500,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  clipBehavior: Clip.antiAlias,
+                                  alignment: Alignment.center,
+                                  child: const Icon(Icons.apartment, color: Colors.white, size: 18),
+                                ),
                               ),
                               const SizedBox(width: 10),
                               Column(
@@ -3918,14 +4213,13 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
           ),
         ],
       ),
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _buildNavTab(StudentTab.home, Icons.home_rounded, 'Home'),
-          _buildNavTab(StudentTab.explore, Icons.search_rounded, 'Explore'),
-          _buildNavTab(StudentTab.bookings, Icons.calendar_today_rounded, 'Bookings'),
-          _buildNavTab(StudentTab.profile, Icons.person_rounded, 'Profile'),
+          Expanded(child: _buildNavTab(StudentTab.home, Icons.home_rounded, 'Home')),
+          Expanded(child: _buildNavTab(StudentTab.explore, Icons.search_rounded, 'Explore')),
+          Expanded(child: _buildNavTab(StudentTab.bookings, Icons.calendar_today_rounded, 'Bookings')),
+          Expanded(child: _buildNavTab(StudentTab.profile, Icons.person_rounded, 'Profile')),
         ],
       ),
     );
@@ -3943,7 +4237,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
         }
       },
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -3953,12 +4247,16 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
               color: isActive ? AppColors.orange500 : AppColors.slate400,
             ),
             const SizedBox(height: 3),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: isActive ? FontWeight.w900 : FontWeight.w700,
-                color: isActive ? AppColors.orange500 : AppColors.slate400,
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                label,
+                maxLines: 1,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: isActive ? FontWeight.w900 : FontWeight.w700,
+                  color: isActive ? AppColors.orange500 : AppColors.slate400,
+                ),
               ),
             ),
           ],
@@ -3970,6 +4268,85 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
   // ==========================================
   // MODALS & DIALOGS
   // ==========================================
+  void _showManualCodeInputDialog(BuildContext modalCtx, void Function(void Function()) setModalState) {
+    final codeCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (dlgCtx) => AlertDialog(
+        backgroundColor: AppColors.slate900,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.pin_outlined, color: AppColors.orange500, size: 22),
+            SizedBox(width: 8),
+            Text(
+              'Enter Passcode',
+              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Enter the 6-digit dynamic passcode displayed on the library owner\'s Attendance QR screen:',
+              style: TextStyle(color: AppColors.slate300, fontSize: 12),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: codeCtrl,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              autofocus: true,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 22,
+                letterSpacing: 6,
+                fontWeight: FontWeight.w900,
+              ),
+              textAlign: TextAlign.center,
+              decoration: InputDecoration(
+                counterText: '',
+                hintText: '000000',
+                hintStyle: const TextStyle(color: Colors.white24, letterSpacing: 6),
+                filled: true,
+                fillColor: AppColors.slate800,
+                contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: AppColors.orange500, width: 2),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dlgCtx).pop(),
+            child: const Text('Cancel', style: TextStyle(color: AppColors.slate400)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.orange500,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            ),
+            onPressed: () {
+              final code = codeCtrl.text.trim();
+              if (code.length == 6) {
+                Navigator.of(dlgCtx).pop();
+                _handleQrAttendanceScan(code, setModalState);
+              }
+            },
+            child: const Text('Verify & Punch In', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _openScannerModal() {
     setState(() {
       _scannerStage = 'aiming';
@@ -4110,30 +4487,62 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
                         ),
                       ),
                     ),
-                    const SizedBox(height: 18),
-                    const Text(
-                      'Camera Active · Point at library attendance QR code',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 11, color: AppColors.slate400),
+                    const SizedBox(height: 14),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white12),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.qr_code_scanner_rounded,
+                            size: 16,
+                            color: _isCheckedIn ? AppColors.emerald500 : AppColors.orange500,
+                          ),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              _isCheckedIn
+                                  ? 'Point camera at attendance QR or punch out below'
+                                  : 'Point camera at library\'s live 2-minute dynamic QR code',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: AppColors.slate300,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 20),
-                    CustomButton(
-                      label: _isCheckedIn ? 'Punch Out (Mark Exit)' : 'Scan & Punch In (PRESENT)',
-                      onPressed: () {
-                        if (_isCheckedIn) {
+                    const SizedBox(height: 14),
+                    if (_isCheckedIn) ...[
+                      CustomButton(
+                        label: 'Punch Out (Mark Exit)',
+                        onPressed: () {
                           _performPunchOut();
                           Navigator.of(ctx).pop();
-                        } else {
-                          String? payload = _activeLibraryModel?.qrPayload ?? _activeLibraryData?['qrPayload']?.toString();
-                          if (payload != null && payload.isNotEmpty) {
-                            _handleQrAttendanceScan(payload, setModalState);
-                          } else {
-                            _performPunchIn();
-                            Navigator.of(ctx).pop();
-                          }
-                        }
-                      },
-                    ),
+                        },
+                      ),
+                    ] else ...[
+                      TextButton.icon(
+                        onPressed: () => _showManualCodeInputDialog(ctx, setModalState),
+                        icon: const Icon(Icons.pin_outlined, size: 16, color: AppColors.orange400),
+                        label: const Text(
+                          'Enter 6-Digit Attendance Code',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.orange400,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
                   ] else ...[
                     // Success View
                     Container(

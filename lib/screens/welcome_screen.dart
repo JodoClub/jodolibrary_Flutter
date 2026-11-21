@@ -90,11 +90,10 @@ class WelcomeScreen extends StatelessWidget {
                         ),
                       ),
                       child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
                         children: [
-                          _buildStatItem('100+', 'Libraries'),
-                          _buildStatItem('4.9', 'Avg. rating'),
-                          _buildStatItem('24×7', 'Support'),
+                          Expanded(child: _buildStatItem('100+', 'Libraries')),
+                          Expanded(child: _buildStatItem('4.9', 'Avg. rating')),
+                          Expanded(child: _buildStatItem('24×7', 'Support')),
                         ],
                       ),
                     ),
@@ -150,22 +149,28 @@ class WelcomeScreen extends StatelessWidget {
   Widget _buildStatItem(String value, String label) {
     return Column(
       children: [
-        Text(
-          value,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.w900,
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+            ),
           ),
         ),
         const SizedBox(height: 4),
-        Text(
-          label.toUpperCase(),
-          style: const TextStyle(
-            color: AppColors.indigo300,
-            fontSize: 9,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 0.5,
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            label.toUpperCase(),
+            style: const TextStyle(
+              color: AppColors.indigo300,
+              fontSize: 9,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.5,
+            ),
           ),
         ),
       ],

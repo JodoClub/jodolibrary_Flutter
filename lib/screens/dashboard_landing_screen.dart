@@ -68,38 +68,16 @@ class _DashboardLandingScreenState extends State<DashboardLandingScreen> {
         automaticallyImplyLeading: false,
         backgroundColor: Colors.white,
         title: const BrandLogo(compact: true),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 20),
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: const BoxDecoration(
-                color: AppColors.indigo100,
-                shape: BoxShape.circle,
-              ),
-              alignment: Alignment.center,
-              child: Text(
-                isAdmin ? 'RS' : 'AK',
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                  color: AppColors.indigo950,
-                ),
-              ),
-            ),
-          ),
-        ],
       ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const Spacer(),
-              // Verified Avatar with badge
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Verified Avatar with badge
               Stack(
                 alignment: Alignment.center,
                 clipBehavior: Clip.none,
@@ -230,7 +208,7 @@ class _DashboardLandingScreenState extends State<DashboardLandingScreen> {
                 ),
               ),
 
-              const Spacer(),
+              const SizedBox(height: 32),
 
               // Real App Production Security Footer
               const Row(
@@ -252,6 +230,7 @@ class _DashboardLandingScreenState extends State<DashboardLandingScreen> {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }

@@ -762,6 +762,7 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
           child: Row(
             children: [
               Expanded(
+                flex: 2,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -777,20 +778,28 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
                     ),
                     Row(
                       children: [
-                        Text(
-                          '₹${_library.monthlyPrice.toInt()}',
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900,
-                            color: AppColors.primary,
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            '₹${_library.monthlyPrice.toInt()}',
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.primary,
+                            ),
                           ),
                         ),
-                        const Text(
-                          ' / month',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppColors.slate500,
-                            fontWeight: FontWeight.w600,
+                        const Flexible(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              ' / month',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.slate500,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ),
                         ),
                       ],
@@ -798,18 +807,24 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
                   ],
                 ),
               ),
-              const SizedBox(width: 14),
-              ElevatedButton.icon(
-                onPressed: _openWhatsApp,
-                icon: const Icon(Icons.chat_bubble_rounded, size: 16),
-                label: const Text('Enquire on WhatsApp'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.secondaryDark,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  elevation: 0,
-                  textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 3,
+                child: ElevatedButton.icon(
+                  onPressed: _openWhatsApp,
+                  icon: const Icon(Icons.chat_bubble_rounded, size: 16),
+                  label: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text('Enquire on WhatsApp'),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.secondaryDark,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    elevation: 0,
+                    textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                  ),
                 ),
               ),
             ],
@@ -1393,7 +1408,10 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
             OutlinedButton.icon(
               onPressed: () => _showAllFacilitiesModal(facilities),
               icon: const Icon(Icons.grid_view_rounded, size: 16),
-              label: Text('View All Available Facilities (${facilities.length})'),
+              label: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text('View All Available Facilities (${facilities.length})'),
+              ),
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppColors.primary,
                 side: BorderSide(color: AppColors.primary.withValues(alpha: 0.3)),

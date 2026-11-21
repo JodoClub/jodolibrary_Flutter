@@ -439,23 +439,25 @@ class _OwnerBusinessProfileScreenState extends State<OwnerBusinessProfileScreen>
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'All Library Facilities',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w900,
-                              color: AppColors.slate900,
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'All Library Facilities',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                                color: AppColors.slate900,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            '${_selectedFacilities.length} of ${allFacilities.length} Facilities Selected',
-                            style: const TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.w700),
-                          ),
-                        ],
+                            const SizedBox(height: 2),
+                            Text(
+                              '${_selectedFacilities.length} of ${allFacilities.length} Facilities Selected',
+                              style: const TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.w700),
+                            ),
+                          ],
+                        ),
                       ),
                       IconButton(
                         onPressed: () => Navigator.pop(ctx),
@@ -465,11 +467,16 @@ class _OwnerBusinessProfileScreenState extends State<OwnerBusinessProfileScreen>
                   ),
                   const SizedBox(height: 10),
                   // Select All / Clear All row
-                  Row(
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
                     children: [
                       TextButton.icon(
                         icon: const Icon(Icons.select_all_rounded, size: 16),
-                        label: const Text('Select All (24)', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
+                        label: const FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text('Select All (24)', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
+                        ),
                         onPressed: () {
                           setModalState(() {
                             _selectedFacilities = allFacilities.map((f) => f.id).toSet();
@@ -477,10 +484,12 @@ class _OwnerBusinessProfileScreenState extends State<OwnerBusinessProfileScreen>
                           setState(() {});
                         },
                       ),
-                      const SizedBox(width: 8),
                       TextButton.icon(
                         icon: const Icon(Icons.clear_all_rounded, size: 16, color: AppColors.rose600),
-                        label: const Text('Clear All', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: AppColors.rose600)),
+                        label: const FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text('Clear All', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: AppColors.rose600)),
+                        ),
                         onPressed: () {
                           setModalState(() {
                             _selectedFacilities.clear();
@@ -659,7 +668,7 @@ class _OwnerBusinessProfileScreenState extends State<OwnerBusinessProfileScreen>
                 child: OutlinedButton.icon(
                   onPressed: _previewPublicProfile,
                   icon: const Icon(Icons.remove_red_eye_rounded, size: 16),
-                  label: const Text('Live Preview'),
+                  label: const FittedBox(fit: BoxFit.scaleDown, child: Text('Live Preview')),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppColors.slate700,
                     side: const BorderSide(color: AppColors.slate300),
@@ -987,27 +996,36 @@ class _OwnerBusinessProfileScreenState extends State<OwnerBusinessProfileScreen>
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary,
-                          borderRadius: BorderRadius.circular(8),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(Icons.apps_rounded, color: Colors.white, size: 16),
                         ),
-                        child: const Icon(Icons.apps_rounded, color: Colors.white, size: 16),
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        '+ View & Select All 24 Facilities',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.primary,
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              '+ View & Select All 24 Facilities',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.primary,
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
+                  const SizedBox(width: 6),
                   const Icon(Icons.arrow_forward_ios_rounded, size: 13, color: AppColors.primary),
                 ],
               ),
@@ -1135,13 +1153,15 @@ class _OwnerBusinessProfileScreenState extends State<OwnerBusinessProfileScreen>
             controller: _mapsCtrl,
           ),
           const SizedBox(height: 10),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            alignment: WrapAlignment.spaceBetween,
             children: [
               OutlinedButton.icon(
                 onPressed: _testGoogleMaps,
                 icon: const Icon(Icons.open_in_new_rounded, size: 14),
-                label: const Text('Test Maps Link'),
+                label: const FittedBox(fit: BoxFit.scaleDown, child: Text('Test Maps Link')),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppColors.primary,
                   side: const BorderSide(color: AppColors.indigo200),
@@ -1154,7 +1174,10 @@ class _OwnerBusinessProfileScreenState extends State<OwnerBusinessProfileScreen>
                   final auto = 'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent("${_nameCtrl.text}, ${_addrCtrl.text}, ${_cityCtrl.text}")}';
                   setState(() => _mapsCtrl.text = auto);
                 },
-                child: const Text('Auto-Generate from Address', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                child: const FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text('Auto-Generate from Address', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                ),
               ),
             ],
           ),
