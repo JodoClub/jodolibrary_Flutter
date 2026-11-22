@@ -15,7 +15,7 @@ class ApiConfig {
 
   /// Webhook URL for Enquiry / List Your Library submissions (Google Apps Script Webhook)
   static String enquiryWebhookUrl =
-      'https://script.google.com/macros/s/AKfycbzt9Mpl30eYf08PJDN1sw2YWUpqahOsmtMb8IUBHZlPIHSt_iI08A9pdzImcIk2fBS0tQ/exec';
+      'https://script.google.com/macros/s/AKfycbwRXbsdAonmXKZ6VcUfJc9WK7hLUyz82jTXUV7SjNVFGxyd_EQLXfPl6o-PGlPVc20L/exec';
 
   /// Development universal OTP configured in backend (application-dev.yml)
   static const String devFixedOtp = '4321';
