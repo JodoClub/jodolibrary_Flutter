@@ -7,6 +7,7 @@ import '../theme/app_theme.dart';
 import '../widgets/brand_logo.dart';
 import '../widgets/common_widgets.dart';
 import '../widgets/custom_button.dart';
+import 'enquiry_screen.dart';
 
 class MobileScreen extends StatefulWidget {
   final UserRole role;
@@ -451,45 +452,119 @@ class _MobileScreenState extends State<MobileScreen> {
                     ),
 
                     const SizedBox(height: 18),
-                    Wrap(
-                      alignment: WrapAlignment.center,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        const Text(
-                          'By continuing, you agree to our ',
-                          style: TextStyle(fontSize: 11, color: AppColors.slate500, fontWeight: FontWeight.w500),
+                    // Want to list your library / Enquiry Contact Us Banner
+                    InkWell(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const EnquiryScreen(),
+                          ),
+                        );
+                      },
+                      borderRadius: BorderRadius.circular(16),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: AppColors.primary.withValues(alpha: 0.22),
+                            width: 1.2,
+                          ),
                         ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Icon(
+                                Icons.add_business_rounded,
+                                color: Colors.white,
+                                size: 18,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Want to list your library in your city?',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w800,
+                                      color: AppColors.slate900,
+                                      letterSpacing: -0.2,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  RichText(
+                                    text: const TextSpan(
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: AppColors.slate600,
+                                        fontFamily: 'Plus Jakarta Sans',
+                                      ),
+                                      children: [
+                                        TextSpan(text: 'Or have any enquiry? '),
+                                        TextSpan(
+                                          text: 'Contact Us →',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w800,
+                                            color: AppColors.primary,
+                                            decoration: TextDecoration.underline,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Icon(
+                              Icons.arrow_forward_ios_rounded,
+                              size: 13,
+                              color: AppColors.primary,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
                         InkWell(
                           onTap: () => _showTermsModal(context),
                           child: const Text(
-                            'Terms & Conditions',
+                            'Terms of Service',
                             style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.primary,
+                              fontSize: 10.5,
+                              color: AppColors.slate400,
+                              fontWeight: FontWeight.w600,
                               decoration: TextDecoration.underline,
                             ),
                           ),
                         ),
                         const Text(
-                          ' and ',
-                          style: TextStyle(fontSize: 11, color: AppColors.slate500, fontWeight: FontWeight.w500),
+                          '  •  ',
+                          style: TextStyle(fontSize: 10.5, color: AppColors.slate400),
                         ),
                         InkWell(
                           onTap: () => _showPrivacyModal(context),
                           child: const Text(
                             'Privacy Policy',
                             style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.primary,
+                              fontSize: 10.5,
+                              color: AppColors.slate400,
+                              fontWeight: FontWeight.w600,
                               decoration: TextDecoration.underline,
                             ),
                           ),
-                        ),
-                        const Text(
-                          '.',
-                          style: TextStyle(fontSize: 11, color: AppColors.slate500),
                         ),
                       ],
                     ),

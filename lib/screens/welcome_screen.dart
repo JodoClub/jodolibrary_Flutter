@@ -3,6 +3,7 @@ import '../models/app_models.dart';
 import '../theme/app_theme.dart';
 import '../widgets/brand_logo.dart';
 import '../widgets/custom_button.dart';
+import 'enquiry_screen.dart';
 
 class WelcomeScreen extends StatelessWidget {
   final ValueChanged<UserRole> onSelectRole;
@@ -127,15 +128,84 @@ class WelcomeScreen extends StatelessWidget {
                 leading: const Icon(Icons.apartment, color: AppColors.slate800, size: 20),
                 onPressed: () => onSelectRole(UserRole.admin),
               ),
-              const SizedBox(height: 16),
-              const Center(
-                child: Text(
-                  'By continuing, you agree to jodolibrary’s Terms of Service and Privacy Policy.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: AppColors.slate400,
-                    height: 1.4,
+              const SizedBox(height: 14),
+              InkWell(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const EnquiryScreen(),
+                    ),
+                  );
+                },
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: AppColors.primary.withValues(alpha: 0.2),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(7),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.add_business_rounded,
+                          color: Colors.white,
+                          size: 16,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Want to list your library in your city?',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.slate900,
+                              ),
+                            ),
+                            const SizedBox(height: 1),
+                            RichText(
+                              text: const TextSpan(
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  color: AppColors.slate600,
+                                  fontFamily: 'Plus Jakarta Sans',
+                                ),
+                                children: [
+                                  TextSpan(text: 'Or have any enquiry? '),
+                                  TextSpan(
+                                    text: 'Contact Us →',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      color: AppColors.primary,
+                                      decoration: TextDecoration.underline,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        size: 12,
+                        color: AppColors.primary,
+                      ),
+                    ],
                   ),
                 ),
               ),
