@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'api_config.dart';
@@ -18,6 +19,21 @@ class EnquirySubmissionResult {
 class EnquiryService {
   static const Duration _timeout = Duration(seconds: 18);
 
+  static String _limit(String v, int max) {
+    final t = v.trim();
+    return t.length > max ? t.substring(0, max) : t;
+  }
+
+  /// Apps Script answers with a 302 to script.googleusercontent.com; only
+  /// follow redirects that stay on Google-owned hosts.
+  static bool _isTrustedRedirect(Uri uri) {
+    if (uri.scheme != 'https') return false;
+    final h = uri.host.toLowerCase();
+    return h == 'script.google.com' ||
+        h == 'script.googleusercontent.com' ||
+        h.endsWith('.googleusercontent.com');
+  }
+
   /// Submits an enquiry to the Google Apps Script Webhook.
   /// Automatically handles HTTP 302 redirects from Google Script Web Apps.
   static Future<EnquirySubmissionResult> submitEnquiry({
@@ -36,20 +52,27 @@ class EnquiryService {
 
     final nowStr = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
 
+    final name = _limit(fullName, 100);
+    final phone = _limit(mobile, 20);
+    final mail = _limit(email ?? '', 120);
+    final addr = _limit(address, 300);
+    final msg = _limit(message, 1500);
+
     final payload = <String, dynamic>{
       'dateTime': nowStr,
-      'fullName': fullName.trim(),
-      'name': fullName.trim(),
-      'userType': userType,
-      'enquiryType': enquiryType,
-      'mobile': mobile.trim(),
-      'phone': mobile.trim(),
-      'whatsapp': mobile.trim(),
-      'email': (email != null && email.trim().isNotEmpty) ? email.trim() : '',
-      'address': address.trim(),
-      'city': address.trim(),
-      'message': message.trim(),
-      'enquiryMessage': message.trim(),
+      'fullName': name,
+      'name': name,
+      'userType': _limit(userType, 40),
+      'enquiryType': _limit(enquiryType, 60),
+      'mobile': phone,
+      'phone': phone,
+      'whatsapp': phone,
+      'email': mail,
+      'address': addr,
+      'city': addr,
+      'message': msg,
+      'enquiryMessage': msg,
+      if (ApiConfig.enquiryWebhookSecret.isNotEmpty) 'secret': ApiConfig.enquiryWebhookSecret,
     };
 
     try {
@@ -65,6 +88,12 @@ class EnquiryService {
       // Follow Google Apps Script 302 redirect
       if (response.statusCode == 302 && response.headers['location'] != null) {
         final redirectUri = Uri.parse(response.headers['location']!);
+        if (!_isTrustedRedirect(redirectUri)) {
+          return EnquirySubmissionResult(
+            success: false,
+            message: 'Could not submit enquiry. Please try again later.',
+          );
+        }
         response = await http.get(redirectUri).timeout(_timeout);
       }
 
@@ -101,9 +130,10 @@ class EnquiryService {
           message: 'No internet connection. Please check your network and try again.',
         );
       }
+      if (kDebugMode) debugPrint('[EnquiryService] submit failed: $e');
       return EnquirySubmissionResult(
         success: false,
-        message: 'Could not connect to enquiry server. ($e)',
+        message: 'Could not connect to enquiry server. Please try again.',
       );
     }
   }

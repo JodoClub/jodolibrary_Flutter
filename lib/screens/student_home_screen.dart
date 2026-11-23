@@ -4204,6 +4204,13 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
   // ==========================================
   // MODALS & DIALOGS
   // ==========================================
+  double _scannerViewfinderSize(BuildContext ctx) {
+    final size = MediaQuery.sizeOf(ctx);
+    final byWidth = size.width * 0.62;
+    final byHeight = size.height * 0.34;
+    return (byWidth < byHeight ? byWidth : byHeight).clamp(180.0, 300.0);
+  }
+
   void _showManualCodeInputDialog(BuildContext modalCtx, void Function(void Function()) setModalState) {
     final codeCtrl = TextEditingController();
     showDialog(
@@ -4375,8 +4382,10 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
                     ClipRRect(
                       borderRadius: BorderRadius.circular(24),
                       child: Container(
-                        width: 220,
-                        height: 220,
+                        // Scales with the screen: larger on big phones/tablets,
+                        // still fits short screens without overflowing the dialog.
+                        width: _scannerViewfinderSize(ctx),
+                        height: _scannerViewfinderSize(ctx),
                         decoration: BoxDecoration(
                           color: Colors.black,
                           borderRadius: BorderRadius.circular(24),

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cleartext (plain HTTP) is blocked for every host except the ones listed below.
+  TODO: once the backend is served over HTTPS, delete the <domain-config> block
+  so the app uses encrypted connections only.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <!-- Current backend (HTTP only). Remove after HTTPS migration. -->
+        <domain includeSubdomains="false">130.210.33.128</domain>
+        <!-- Local development: Android emulator -> host machine -->
+        <domain includeSubdomains="false">10.0.2.2</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

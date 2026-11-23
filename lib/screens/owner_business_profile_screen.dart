@@ -9,6 +9,7 @@ import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common_widgets.dart';
 import '../widgets/custom_button.dart';
+import '../utils/safe_url.dart';
 import 'library_details_screen.dart';
 
 /// Full Profile & Business Details Editor for Library Owners
@@ -266,11 +267,12 @@ class _OwnerBusinessProfileScreenState extends State<OwnerBusinessProfileScreen>
       return;
     }
     try {
-      final uri = Uri.parse(link);
-      if (await canLaunchUrl(uri)) {
+      final normalized = SafeUrl.normalizeWebLink(link);
+      final uri = normalized == null ? null : SafeUrl.parseLaunchable(normalized);
+      if (uri != null && await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       } else {
-        _showToast('Invalid URL', 'Unable to launch: $link');
+        _showToast('Invalid URL', 'Please enter a valid Google Maps link (https://...).');
       }
     } catch (_) {
       _showToast('Invalid link format', 'Please check the Google Maps URL.');
@@ -318,7 +320,28 @@ class _OwnerBusinessProfileScreenState extends State<OwnerBusinessProfileScreen>
     );
   }
 
+  /// Normalises every link field; returns false (and shows a toast) if any is invalid.
+  bool _validateLinks() {
+    final fields = <String, TextEditingController>{
+      'Google Maps link': _mapsCtrl,
+      'Website': _webCtrl,
+      'Instagram link': _instaCtrl,
+      'Facebook link': _fbCtrl,
+      'YouTube link': _ytCtrl,
+    };
+    for (final entry in fields.entries) {
+      final normalized = SafeUrl.normalizeWebLink(entry.value.text);
+      if (normalized == null) {
+        _showToast('Invalid ${entry.key}', 'Please enter a valid web link (https://...).');
+        return false;
+      }
+      if (normalized != entry.value.text.trim()) entry.value.text = normalized;
+    }
+    return true;
+  }
+
   Future<void> _saveBusinessProfile() async {
+    if (!_validateLinks()) return;
     setState(() => _isSaving = true);
     final model = _constructCurrentModel();
 
@@ -420,7 +443,7 @@ class _OwnerBusinessProfileScreenState extends State<OwnerBusinessProfileScreen>
             }
 
             return Container(
-              height: MediaQuery.of(context).size.height * 0.85,
+              height: MediaQuery.sizeOf(context).height * 0.85,
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

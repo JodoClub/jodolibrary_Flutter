@@ -12,6 +12,7 @@ import '../services/api_config.dart';
 import '../services/api_service.dart';
 import '../services/auth_storage.dart';
 import '../theme/app_theme.dart';
+import '../utils/safe_url.dart';
 import '../widgets/custom_button.dart';
 import '../widgets/qr_code_widget.dart';
 import '../widgets/common_widgets.dart';
@@ -1617,8 +1618,10 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                           child: GridView.builder(
                             shrinkWrap: true,
                             physics: const NeverScrollableScrollPhysics(),
-                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 6,
+                            // Column count adapts to width: ~5 on small phones,
+                            // 6 on regular phones, more on wide screens.
+                            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                              maxCrossAxisExtent: 60,
                               mainAxisSpacing: 8,
                               crossAxisSpacing: 8,
                             ),
@@ -3977,8 +3980,8 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                   onTap: () async {
                     final mapsLink = _businessProfile?.googleMapsUrl ??
                         'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent("$_libraryName, $_address, $_city")}';
-                    final uri = Uri.parse(mapsLink);
-                    if (await canLaunchUrl(uri)) {
+                    final uri = SafeUrl.parseLaunchable(mapsLink);
+                    if (uri != null && await canLaunchUrl(uri)) {
                       await launchUrl(uri, mode: LaunchMode.externalApplication);
                     }
                   },
@@ -4229,7 +4232,7 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
       ),
       builder: (ctx) {
         return Container(
-          height: MediaQuery.of(context).size.height * 0.75,
+          height: MediaQuery.sizeOf(context).height * 0.75,
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -6658,7 +6661,7 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                 : (localFilterTab == 2 ? removedCols : _feeCollections);
 
             return Container(
-              height: MediaQuery.of(context).size.height * 0.75,
+              height: MediaQuery.sizeOf(context).height * 0.75,
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

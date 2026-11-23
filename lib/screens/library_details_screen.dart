@@ -6,6 +6,7 @@ import '../models/library_facilities.dart';
 import '../services/api_config.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/safe_url.dart';
 
 /// Full Google Maps Business Profile screen for Library (Student View & Public View)
 class LibraryDetailsScreen extends StatefulWidget {
@@ -168,15 +169,20 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
       target = '$fallbackScheme$target';
     }
 
+    // Links come from owner-entered data: only launch allow-listed schemes.
+    final uri = SafeUrl.parseLaunchable(target);
+    if (uri == null) {
+      _showToast('Could not open link', 'This link is not valid.');
+      return;
+    }
     try {
-      final uri = Uri.parse(target);
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       } else {
         await launchUrl(uri);
       }
     } catch (_) {
-      _showToast('Could not open link', 'Unable to launch: $target');
+      _showToast('Could not open link', 'No app available to open this link.');
     }
   }
 
@@ -1168,7 +1174,7 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
       builder: (ctx) {
         return Container(
           constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.75,
+            maxHeight: MediaQuery.sizeOf(context).height * 0.75,
           ),
           decoration: const BoxDecoration(
             color: Colors.white,
@@ -1844,8 +1850,8 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
                     itemCount: displaySeats.length,
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 6,
+                    gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                      maxCrossAxisExtent: 60,
                       childAspectRatio: 1.1,
                       crossAxisSpacing: 6,
                       mainAxisSpacing: 6,

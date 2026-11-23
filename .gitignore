@@ -49,3 +49,9 @@ app.*.map.json
 
 *.apk
 
+# FVM Version Cache
+.fvm/
+# Build-time environment files (--dart-define-from-file)
+env/*.json
+# Release obfuscation symbols
+build/symbols/

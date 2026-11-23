@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/app_models.dart';
 import 'api_config.dart';
@@ -22,8 +24,44 @@ class ApiResponse<T> {
   });
 }
 
+/// HTTP client that detects an expired/invalid session (HTTP 401 on an
+/// authenticated request) in one place for every endpoint.
+class _AuthAwareClient extends http.BaseClient {
+  final http.Client _inner = http.Client();
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final response = await _inner.send(request);
+    final hadToken = request.headers['Authorization']?.isNotEmpty ?? false;
+    if (response.statusCode == 401 &&
+        hadToken &&
+        !request.url.path.endsWith('/auth/logout')) {
+      // Fire and forget; the caller still receives the 401 response.
+      ApiService._handleUnauthorized();
+    }
+    return response;
+  }
+}
+
 class ApiService {
   static const Duration _timeout = Duration(seconds: 12);
+
+  /// Max accepted size for a library photo upload (bytes).
+  static const int maxUploadBytes = 8 * 1024 * 1024;
+
+  static final http.Client _client = _AuthAwareClient();
+  static final Random _random = Random.secure();
+
+  /// Set by the root widget; called once when the backend rejects the session.
+  static void Function()? onSessionExpired;
+  static bool _sessionExpiredHandled = false;
+
+  static Future<void> _handleUnauthorized() async {
+    if (_sessionExpiredHandled) return;
+    _sessionExpiredHandled = true;
+    await AuthStorage.clearSession();
+    onSessionExpired?.call();
+  }
 
   static void _checkNetworkError(dynamic e) {
     if (e is SocketException ||
@@ -37,19 +75,35 @@ class ApiService {
     }
   }
 
-  static String _formatNetworkError(dynamic e, [String defaultPrefix = 'Could not connect to backend server']) {
+  /// Returns a user-safe message. Raw exception details (hosts, IPs, parse
+  /// errors) are only logged in debug builds, never shown to users.
+  static String _formatNetworkError(dynamic e, [String defaultPrefix = 'Could not connect to server']) {
     _checkNetworkError(e);
+    if (kDebugMode) debugPrint('[ApiService] $defaultPrefix: $e');
+    final s = e.toString();
     if (e is SocketException ||
-        e.toString().contains('SocketException') ||
-        e.toString().contains('Failed host lookup') ||
-        e.toString().contains('Network is unreachable')) {
+        s.contains('SocketException') ||
+        s.contains('Failed host lookup') ||
+        s.contains('Network is unreachable')) {
       return 'No internet connection. Please check your network and try again.';
     }
-    return '$defaultPrefix: $e';
+    if (s.contains('TimeoutException')) {
+      return 'The server is taking too long to respond. Please try again.';
+    }
+    if (e is FormatException) {
+      return 'Unexpected response from server. Please try again later.';
+    }
+    return '$defaultPrefix. Please try again.';
+  }
+
+  static String _newTransactionId() {
+    final bytes = List<int>.generate(12, (_) => _random.nextInt(256));
+    final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    return 'TXN-${DateTime.now().millisecondsSinceEpoch}-$hex';
   }
 
   static Map<String, String> _buildHeaders({String? token, String? customTxnId}) {
-    final txn = customTxnId ?? 'TXN-${DateTime.now().millisecondsSinceEpoch}';
+    final txn = customTxnId ?? _newTransactionId();
     final headers = <String, String>{
       'Content-Type': 'application/json',
       'Accept': 'application/json',
@@ -80,7 +134,7 @@ class ApiService {
         'role': role == UserRole.admin ? 'ADMIN' : 'STUDENT',
       });
 
-      final response = await http
+      final response = await _client
           .post(uri, headers: _buildHeaders(), body: body)
           .timeout(_timeout);
 
@@ -135,7 +189,7 @@ class ApiService {
         'role': role == UserRole.admin ? 'ADMIN' : 'STUDENT',
       });
 
-      final response = await http
+      final response = await _client
           .post(uri, headers: _buildHeaders(), body: body)
           .timeout(_timeout);
 
@@ -143,6 +197,7 @@ class ApiService {
       if (response.statusCode == 200 && json['success'] == true) {
         final token = json['token'] as String;
         final user = json['user'] as Map<String, dynamic>?;
+        _sessionExpiredHandled = false;
         await AuthStorage.saveSession(
           token: token,
           role: role,
@@ -187,7 +242,7 @@ class ApiService {
         'gender': gender,
       });
 
-      final response = await http
+      final response = await _client
           .post(uri, headers: _buildHeaders(token: token), body: body)
           .timeout(_timeout);
 
@@ -229,7 +284,7 @@ class ApiService {
         'longitude': longitude ?? 85.1376,
       });
 
-      final response = await http
+      final response = await _client
           .post(uri, headers: _buildHeaders(token: token), body: body)
           .timeout(_timeout);
 
@@ -253,7 +308,7 @@ class ApiService {
     try {
       final token = await AuthStorage.getToken();
       final uri = Uri.parse('${ApiConfig.baseUrl}/auth/me');
-      final response = await http
+      final response = await _client
           .get(uri, headers: _buildHeaders(token: token))
           .timeout(_timeout);
 
@@ -328,7 +383,7 @@ class ApiService {
         if (ownerPhoto != null && ownerPhoto.isNotEmpty) 'ownerPhoto': ownerPhoto.trim(),
       });
 
-      final response = await http
+      final response = await _client
           .put(uri, headers: _buildHeaders(token: token), body: body)
           .timeout(_timeout);
 
@@ -387,7 +442,7 @@ class ApiService {
         if (cleanMobile != null && cleanMobile.length == 10) 'countryCode': '+91',
       });
 
-      final response = await http
+      final response = await _client
           .put(uri, headers: _buildHeaders(token: token), body: body)
           .timeout(_timeout);
 
@@ -421,7 +476,7 @@ class ApiService {
     try {
       final token = await AuthStorage.getToken();
       final uri = Uri.parse('${ApiConfig.baseUrl}/student/dashboard');
-      final response = await http
+      final response = await _client
           .get(uri, headers: _buildHeaders(token: token))
           .timeout(_timeout);
 
@@ -455,7 +510,7 @@ class ApiService {
         'longitude': longitude ?? 85.1376,
       });
 
-      final response = await http
+      final response = await _client
           .post(uri, headers: _buildHeaders(token: token), body: body)
           .timeout(_timeout);
 
@@ -479,7 +534,7 @@ class ApiService {
     try {
       final token = await AuthStorage.getToken();
       final uri = Uri.parse('${ApiConfig.baseUrl}/student/attendance/punch-out');
-      final response = await http
+      final response = await _client
           .post(uri, headers: _buildHeaders(token: token))
           .timeout(_timeout);
 
@@ -512,7 +567,7 @@ class ApiService {
       final uri = Uri.parse('${ApiConfig.baseUrl}/student/attendance/monthly')
           .replace(queryParameters: queryParams.isEmpty ? null : queryParams);
 
-      final response = await http
+      final response = await _client
           .get(uri, headers: _buildHeaders(token: token))
           .timeout(_timeout);
 
@@ -536,7 +591,7 @@ class ApiService {
     try {
       final token = await AuthStorage.getToken();
       final uri = Uri.parse('${ApiConfig.baseUrl}/student/analytics/productivity');
-      final response = await http
+      final response = await _client
           .get(uri, headers: _buildHeaders(token: token))
           .timeout(_timeout);
 
@@ -574,7 +629,7 @@ class ApiService {
       final uri = Uri.parse('${ApiConfig.baseUrl}/libraries/explore')
           .replace(queryParameters: queryParams.isEmpty ? null : queryParams);
 
-      final response = await http
+      final response = await _client
           .get(uri, headers: _buildHeaders())
           .timeout(_timeout);
 
@@ -602,7 +657,7 @@ class ApiService {
     try {
       final token = await AuthStorage.getToken();
       final uri = Uri.parse('${ApiConfig.baseUrl}/owner/dashboard');
-      final response = await http
+      final response = await _client
           .get(uri, headers: _buildHeaders(token: token))
           .timeout(_timeout);
 
@@ -628,7 +683,7 @@ class ApiService {
     try {
       final token = await AuthStorage.getToken();
       final uri = Uri.parse('${ApiConfig.baseUrl}/owner/seats/floor-map?filter=$filter');
-      final response = await http
+      final response = await _client
           .get(uri, headers: _buildHeaders(token: token))
           .timeout(_timeout);
 
@@ -655,7 +710,7 @@ class ApiService {
     try {
       final token = await AuthStorage.getToken();
       final uri = Uri.parse('${ApiConfig.baseUrl}/owner/members?page=$page&size=$size');
-      final response = await http
+      final response = await _client
           .get(uri, headers: _buildHeaders(token: token))
           .timeout(_timeout);
 
@@ -699,7 +754,7 @@ class ApiService {
         'paymentMethod': paymentMethod,
       });
 
-      final response = await http
+      final response = await _client
           .post(uri, headers: _buildHeaders(token: token), body: body)
           .timeout(_timeout);
 
@@ -724,7 +779,7 @@ class ApiService {
       final token = await AuthStorage.getToken();
       final clean = phone.replaceAll(RegExp(r'\D'), '');
       final uri = Uri.parse('${ApiConfig.baseUrl}/owner/members/search-student?phone=$clean');
-      final response = await http
+      final response = await _client
           .get(uri, headers: _buildHeaders(token: token))
           .timeout(_timeout);
 
@@ -756,7 +811,7 @@ class ApiService {
         if (gender != null && gender.isNotEmpty) 'gender': gender,
       });
 
-      final response = await http
+      final response = await _client
           .post(uri, headers: _buildHeaders(token: token), body: body)
           .timeout(_timeout);
 
@@ -800,7 +855,7 @@ class ApiService {
         'duration': duration,
       });
 
-      final response = await http
+      final response = await _client
           .post(uri, headers: _buildHeaders(token: token), body: body)
           .timeout(_timeout);
 
@@ -824,7 +879,7 @@ class ApiService {
     try {
       final token = await AuthStorage.getToken();
       final uri = Uri.parse('${ApiConfig.baseUrl}/owner/members/requests');
-      final response = await http
+      final response = await _client
           .get(uri, headers: _buildHeaders(token: token))
           .timeout(_timeout);
 
@@ -854,7 +909,7 @@ class ApiService {
         if (reason != null && reason.isNotEmpty) 'reason': reason,
       });
 
-      final response = await http
+      final response = await _client
           .post(uri, headers: _buildHeaders(token: token), body: body)
           .timeout(_timeout);
 
@@ -874,7 +929,7 @@ class ApiService {
     try {
       final token = await AuthStorage.getToken();
       final uri = Uri.parse('${ApiConfig.baseUrl}/owner/members/removed');
-      final response = await http
+      final response = await _client
           .get(uri, headers: _buildHeaders(token: token))
           .timeout(_timeout);
 
@@ -901,7 +956,7 @@ class ApiService {
     try {
       final token = await AuthStorage.getToken();
       final uri = Uri.parse('${ApiConfig.baseUrl}/owner/attendance/standee-qr');
-      final response = await http
+      final response = await _client
           .get(uri, headers: _buildHeaders(token: token))
           .timeout(_timeout);
 
@@ -925,7 +980,7 @@ class ApiService {
     try {
       final token = await AuthStorage.getToken();
       final uri = Uri.parse('${ApiConfig.baseUrl}/owner/attendance/dynamic-qr');
-      final response = await http
+      final response = await _client
           .post(uri, headers: _buildHeaders(token: token))
           .timeout(_timeout);
 
@@ -949,7 +1004,7 @@ class ApiService {
     try {
       final token = await AuthStorage.getToken();
       final uri = Uri.parse('${ApiConfig.baseUrl}/student/memberships/history');
-      final response = await http
+      final response = await _client
           .get(uri, headers: _buildHeaders(token: token))
           .timeout(_timeout);
 
@@ -984,7 +1039,7 @@ class ApiService {
         'newSeatNumber': newSeatNumber,
         if (shiftTiming != null && shiftTiming.isNotEmpty) 'shiftTiming': shiftTiming,
       });
-      final response = await http
+      final response = await _client
           .post(uri, headers: _buildHeaders(token: token), body: body)
           .timeout(_timeout);
       final json = jsonDecode(response.body) as Map<String, dynamic>;
@@ -1006,7 +1061,7 @@ class ApiService {
     try {
       final token = await AuthStorage.getToken();
       final uri = Uri.parse('${ApiConfig.baseUrl}/owner/members/$studentId/toggle-status');
-      final response = await http
+      final response = await _client
           .post(uri, headers: _buildHeaders(token: token))
           .timeout(_timeout);
       final json = jsonDecode(response.body) as Map<String, dynamic>;
@@ -1028,7 +1083,7 @@ class ApiService {
     try {
       final token = await AuthStorage.getToken();
       final uri = Uri.parse('${ApiConfig.baseUrl}/owner/members/$studentId/profile');
-      final response = await http
+      final response = await _client
           .get(uri, headers: _buildHeaders(token: token))
           .timeout(_timeout);
       final json = jsonDecode(response.body) as Map<String, dynamic>;
@@ -1054,7 +1109,7 @@ class ApiService {
     try {
       final token = await AuthStorage.getToken();
       final uri = Uri.parse('${ApiConfig.baseUrl}/student/memberships/requests');
-      final response = await http
+      final response = await _client
           .get(uri, headers: _buildHeaders(token: token))
           .timeout(_timeout);
 
@@ -1075,7 +1130,7 @@ class ApiService {
     try {
       final token = await AuthStorage.getToken();
       final uri = Uri.parse('${ApiConfig.baseUrl}/student/memberships/requests/$requestId/accept');
-      final response = await http
+      final response = await _client
           .post(uri, headers: _buildHeaders(token: token))
           .timeout(_timeout);
 
@@ -1103,7 +1158,7 @@ class ApiService {
         if (reason != null && reason.isNotEmpty) 'reason': reason,
       });
 
-      final response = await http
+      final response = await _client
           .post(uri, headers: _buildHeaders(token: token), body: body)
           .timeout(_timeout);
 
@@ -1127,7 +1182,7 @@ class ApiService {
     try {
       final token = await AuthStorage.getToken();
       final uri = Uri.parse('${ApiConfig.baseUrl}/libraries/$libraryId/seats');
-      final response = await http
+      final response = await _client
           .get(uri, headers: _buildHeaders(token: token))
           .timeout(_timeout);
 
@@ -1183,7 +1238,7 @@ class ApiService {
     try {
       final token = await AuthStorage.getToken();
       final uri = Uri.parse('${ApiConfig.baseUrl}/owner/library/business-profile');
-      final response = await http
+      final response = await _client
           .get(uri, headers: _buildHeaders(token: token))
           .timeout(_timeout);
 
@@ -1255,7 +1310,7 @@ class ApiService {
         if (ownerPhoto != null && ownerPhoto.isNotEmpty) 'ownerPhoto': ownerPhoto.trim(),
       });
 
-      final response = await http
+      final response = await _client
           .put(uri, headers: _buildHeaders(token: token), body: body)
           .timeout(_timeout);
 
@@ -1284,7 +1339,7 @@ class ApiService {
       final uri = Uri.parse('${ApiConfig.baseUrl}/owner/profile/photo');
       final body = jsonEncode({'photoUrl': photoUrl.trim()});
 
-      final response = await http
+      final response = await _client
           .put(uri, headers: _buildHeaders(token: token), body: body)
           .timeout(_timeout);
 
@@ -1309,6 +1364,10 @@ class ApiService {
     try {
       final token = await AuthStorage.getToken();
       final uri = Uri.parse('${ApiConfig.baseUrl}/owner/library/photos/upload');
+      final fileSize = await imageFile.length();
+      if (fileSize > maxUploadBytes) {
+        return ApiResponse(success: false, message: 'Photo is too large. Please choose an image under 8 MB.');
+      }
       final request = http.MultipartRequest('POST', uri);
 
       final headers = _buildHeaders(token: token);
@@ -1317,7 +1376,7 @@ class ApiService {
 
       request.files.add(await http.MultipartFile.fromPath('file', imageFile.path));
 
-      final streamedResponse = await request.send().timeout(const Duration(seconds: 25));
+      final streamedResponse = await _client.send(request).timeout(const Duration(seconds: 25));
       final response = await http.Response.fromStream(streamedResponse);
       final json = jsonDecode(response.body) as Map<String, dynamic>;
 
@@ -1340,7 +1399,7 @@ class ApiService {
     try {
       final token = await AuthStorage.getToken();
       final uri = Uri.parse('${ApiConfig.baseUrl}/libraries/$libraryId');
-      final response = await http
+      final response = await _client
           .get(uri, headers: _buildHeaders(token: token))
           .timeout(_timeout);
 
@@ -1364,7 +1423,7 @@ class ApiService {
     try {
       final token = await AuthStorage.getToken();
       final uri = Uri.parse('${ApiConfig.baseUrl}/student/active-library');
-      final response = await http
+      final response = await _client
           .get(uri, headers: _buildHeaders(token: token))
           .timeout(_timeout);
 
@@ -1390,7 +1449,7 @@ class ApiService {
     try {
       final token = await AuthStorage.getToken();
       final uri = Uri.parse('${ApiConfig.baseUrl}/owner/collections');
-      final response = await http
+      final response = await _client
           .get(uri, headers: _buildHeaders(token: token))
           .timeout(_timeout);
 
@@ -1422,7 +1481,7 @@ class ApiService {
     try {
       final token = await AuthStorage.getToken();
       final uri = Uri.parse('${ApiConfig.baseUrl}/owner/collections');
-      final response = await http
+      final response = await _client
           .post(
             uri,
             headers: _buildHeaders(token: token),
@@ -1459,7 +1518,7 @@ class ApiService {
     try {
       final token = await AuthStorage.getToken();
       final uri = Uri.parse('${ApiConfig.baseUrl}/owner/collections/$collectionId');
-      final response = await http
+      final response = await _client
           .put(
             uri,
             headers: _buildHeaders(token: token),
@@ -1488,7 +1547,7 @@ class ApiService {
       final token = await AuthStorage.getToken();
       if (token != null) {
         final uri = Uri.parse('${ApiConfig.baseUrl}/auth/logout');
-        await http.post(uri, headers: _buildHeaders(token: token)).timeout(const Duration(seconds: 4));
+        await _client.post(uri, headers: _buildHeaders(token: token)).timeout(const Duration(seconds: 4));
       }
     } catch (_) {}
     await AuthStorage.clearSession();

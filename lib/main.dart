@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'models/app_models.dart';
 import 'screens/dashboard_landing_screen.dart';
 import 'screens/mobile_screen.dart';
@@ -13,8 +14,13 @@ import 'services/auth_storage.dart';
 import 'services/network_service.dart';
 import 'theme/app_theme.dart';
 
-void main() {
+/// Widest the app content grows on tablets / foldables / desktop windows.
+const double kMaxContentWidth = 640;
+
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Layouts are designed for portrait phones; lock until landscape is supported.
+  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   NetworkService.instance.initialize();
   runApp(const JodoApp());
 }
@@ -40,7 +46,18 @@ class JodoApp extends StatelessWidget {
           data: mediaQuery.copyWith(textScaler: clampedScaler),
           child: Stack(
             children: [
-              ?child,
+              if (child != null)
+                // On wide screens keep a phone-width column centred instead of
+                // stretching every screen edge to edge.
+                ColoredBox(
+                  color: AppColors.slate200,
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: kMaxContentWidth),
+                      child: child,
+                    ),
+                  ),
+                ),
               const Positioned(
                 top: 0,
                 left: 0,
@@ -73,7 +90,32 @@ class _JodoRootFlowState extends State<JodoRootFlow> {
   @override
   void initState() {
     super.initState();
+    ApiService.onSessionExpired = _handleSessionExpired;
     _checkSavedSession();
+  }
+
+  @override
+  void dispose() {
+    ApiService.onSessionExpired = null;
+    super.dispose();
+  }
+
+  /// Called once when any authenticated API call returns HTTP 401.
+  void _handleSessionExpired() {
+    if (!mounted) return;
+    final wasLoggedIn = _currentScreen != AppScreen.welcome &&
+        _currentScreen != AppScreen.mobile &&
+        _currentScreen != AppScreen.otp;
+    NetworkService.navigatorKey.currentState?.popUntil((r) => r.isFirst);
+    setState(() {
+      _role = null;
+      _currentScreen = AppScreen.welcome;
+    });
+    if (wasLoggedIn) {
+      NetworkService.scaffoldMessengerKey.currentState?.showSnackBar(
+        const SnackBar(content: Text('Your session has expired. Please log in again.')),
+      );
+    }
   }
 
   Future<void> _checkSavedSession() async {

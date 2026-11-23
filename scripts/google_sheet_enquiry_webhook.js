@@ -20,6 +20,33 @@
  * 10. The webhook is now LIVE and will auto-generate the header row on first submission!
  */
 
+/**
+ * SECURITY SETTINGS
+ * WEBHOOK_SECRET: optional shared secret. When non-empty, requests must send the
+ *   same value in a "secret" field (build the app with
+ *   --dart-define=ENQUIRY_WEBHOOK_SECRET=<same value>).
+ * RATE_LIMIT_SECONDS: minimum gap between two enquiries from the same mobile number.
+ */
+var WEBHOOK_SECRET = "";
+var RATE_LIMIT_SECONDS = 60;
+
+/**
+ * Prevents spreadsheet formula injection: a value starting with = + - @ (or a
+ * tab / carriage return) is stored as plain text instead of being evaluated.
+ */
+function safeCell(value, maxLen) {
+  var v = String(value === undefined || value === null ? "" : value);
+  v = v.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
+  if (v.length > maxLen) v = v.substring(0, maxLen);
+  if (/^[=+\-@\t\r]/.test(v)) v = "'" + v;
+  return v;
+}
+
+function jsonOut(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
 function doPost(e) {
   var lock = LockService.getScriptLock();
   try {
@@ -72,16 +99,32 @@ function doPost(e) {
     var message = data.message || data.enquiryMessage || "";
     var status = "New Enquiry";
 
+    if (WEBHOOK_SECRET && data.secret !== WEBHOOK_SECRET) {
+      return jsonOut({ "success": false, "message": "Unauthorized" });
+    }
+
+    var digits = String(phone).replace(/\D/g, "");
+    if (digits.length < 10 || digits.length > 13) {
+      return jsonOut({ "success": false, "message": "Invalid mobile number" });
+    }
+
+    var cache = CacheService.getScriptCache();
+    var rateKey = "enq_" + digits;
+    if (cache.get(rateKey)) {
+      return jsonOut({ "success": false, "message": "Please wait a minute before sending another enquiry." });
+    }
+    cache.put(rateKey, "1", RATE_LIMIT_SECONDS);
+
     // Append the row
     sheet.appendRow([
-      timestamp,
-      name,
-      userType,
-      enquiryType,
-      phone,
-      email,
-      address,
-      message,
+      safeCell(timestamp, 40),
+      safeCell(name, 100),
+      safeCell(userType, 40),
+      safeCell(enquiryType, 60),
+      safeCell(phone, 20),
+      safeCell(email, 120),
+      safeCell(address, 300),
+      safeCell(message, 1500),
       status
     ]);
 
@@ -98,11 +141,12 @@ function doPost(e) {
     })).setMimeType(ContentService.MimeType.JSON);
 
   } catch (error) {
-    return ContentService.createTextOutput(JSON.stringify({
+    // Do not leak internal error details to the caller.
+    console.error(error);
+    return jsonOut({
       "success": false,
-      "error": error.toString(),
       "message": "Failed to record enquiry"
-    })).setMimeType(ContentService.MimeType.JSON);
+    });
 
   } finally {
     lock.releaseLock();
