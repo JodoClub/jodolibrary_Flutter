@@ -10,6 +10,8 @@ import '../theme/app_theme.dart';
 import '../widgets/brand_logo.dart';
 import '../widgets/custom_button.dart';
 import '../widgets/common_widgets.dart';
+import '../widgets/double_back_exit_scope.dart';
+import '../utils/app_haptics.dart';
 import 'library_details_screen.dart';
 
 class StudentHomeScreen extends StatefulWidget {
@@ -29,6 +31,7 @@ class StudentHomeScreen extends StatefulWidget {
 class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindingObserver {
   StudentTab _activeTab = StudentTab.home;
   String _searchQuery = '';
+  final TextEditingController _exploreSearchController = TextEditingController();
 
   // Real Student Profile State
   String _studentName = 'Student Member';
@@ -65,6 +68,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
 
   @override
   void dispose() {
+    _exploreSearchController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -821,8 +825,13 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.slate50,
+    return DoubleBackExitScope(
+      canPopFallback: _activeTab != StudentTab.home,
+      onBackFallback: () {
+        setState(() => _activeTab = StudentTab.home);
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.slate50,
       body: Stack(
         children: [
           SafeArea(
@@ -918,6 +927,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
         top: false,
         child: _buildBottomNav(),
       ),
+    ),
     );
   }
 
@@ -2660,13 +2670,24 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: TextField(
+                  controller: _exploreSearchController,
                   onChanged: (val) => setState(() => _searchQuery = val),
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     hintText: 'Search libraries or areas',
-                    hintStyle: TextStyle(color: AppColors.slate400, fontSize: 13),
-                    prefixIcon: Icon(Icons.search, color: AppColors.slate400),
+                    hintStyle: const TextStyle(color: AppColors.slate400, fontSize: 13),
+                    prefixIcon: const Icon(Icons.search, color: AppColors.slate400),
+                    suffixIcon: _searchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.cancel, color: AppColors.slate400, size: 20),
+                            onPressed: () {
+                              AppHaptics.light();
+                              _exploreSearchController.clear();
+                              setState(() => _searchQuery = '');
+                            },
+                          )
+                        : null,
                     border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   ),
                 ),
               ),
@@ -4165,6 +4186,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
     final isActive = _activeTab == tab;
     return InkWell(
       onTap: () {
+        AppHaptics.selection();
         setState(() => _activeTab = tab);
         _loadStudentRequestsAndBookings();
         _loadStudentProfileData();

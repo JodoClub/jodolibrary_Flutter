@@ -13,6 +13,8 @@ import '../services/api_service.dart';
 import '../services/auth_storage.dart';
 import '../theme/app_theme.dart';
 import '../utils/safe_url.dart';
+import '../utils/app_haptics.dart';
+import '../widgets/double_back_exit_scope.dart';
 import '../widgets/custom_button.dart';
 import '../widgets/qr_code_widget.dart';
 import '../widgets/common_widgets.dart';
@@ -40,6 +42,13 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
   bool _seatsListView = true; // Default to the requested List View (Left: Seat #, Right: Alloted to)
   String _seatSearch = '';
   String _memberSearch = '';
+  final TextEditingController _memberSearchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _memberSearchController.dispose();
+    super.dispose();
+  }
 
   // Real Owner Profile State
   String _ownerName = 'Library Owner';
@@ -351,8 +360,13 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.slate50,
+    return DoubleBackExitScope(
+      canPopFallback: _activeTab != PartnerTab.overview,
+      onBackFallback: () {
+        setState(() => _activeTab = PartnerTab.overview);
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.slate50,
       body: SafeArea(
         bottom: false,
         child: RefreshIndicator(
@@ -372,6 +386,7 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
         top: false,
         child: _buildBottomNav(),
       ),
+    ),
     );
   }
 
@@ -2043,13 +2058,24 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: TextField(
+                  controller: _memberSearchController,
                   onChanged: (val) => setState(() => _memberSearch = val),
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     hintText: 'Search member, seat, or mobile',
-                    hintStyle: TextStyle(color: AppColors.slate400, fontSize: 12),
-                    prefixIcon: Icon(Icons.search, color: AppColors.slate400, size: 18),
+                    hintStyle: const TextStyle(color: AppColors.slate400, fontSize: 12),
+                    prefixIcon: const Icon(Icons.search, color: AppColors.slate400, size: 18),
+                    suffixIcon: _memberSearch.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.cancel, color: AppColors.slate400, size: 18),
+                            onPressed: () {
+                              AppHaptics.light();
+                              _memberSearchController.clear();
+                              setState(() => _memberSearch = '');
+                            },
+                          )
+                        : null,
                     border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   ),
                 ),
               ),
@@ -4365,6 +4391,7 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
     final isActive = _activeTab == tab;
     return InkWell(
       onTap: () {
+        AppHaptics.selection();
         setState(() => _activeTab = tab);
         if (tab == PartnerTab.overview) {
           _loadCollectionsData();

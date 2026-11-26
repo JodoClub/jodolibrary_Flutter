@@ -7,6 +7,7 @@ import '../services/api_config.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/safe_url.dart';
+import '../utils/clipboard_helper.dart';
 
 /// Full Google Maps Business Profile screen for Library (Student View & Public View)
 class LibraryDetailsScreen extends StatefulWidget {
@@ -1482,6 +1483,14 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
                     ),
                   ),
                 ),
+                InkWell(
+                  onTap: () => ClipboardHelper.copy(context, _library.address, label: 'Address'),
+                  borderRadius: BorderRadius.circular(8),
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(Icons.copy_rounded, size: 16, color: AppColors.slate400),
+                  ),
+                ),
               ],
             ),
           ),
@@ -1586,6 +1595,19 @@ class _LibraryDetailsScreenState extends State<LibraryDetailsScreen> {
                         fontWeight: FontWeight.w700,
                         color: AppColors.slate700,
                       ),
+                    ),
+                  ),
+                  InkWell(
+                    onTap: () {
+                      final contact = hasPhone ? _library.contactPhone : _library.whatsappNumber;
+                      if (contact != null) {
+                        ClipboardHelper.copy(context, contact, label: 'Contact number');
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(8),
+                    child: const Padding(
+                      padding: EdgeInsets.all(4),
+                      child: Icon(Icons.copy_rounded, size: 16, color: AppColors.slate400),
                     ),
                   ),
                 ],

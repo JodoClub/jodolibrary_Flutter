@@ -13,6 +13,7 @@ import 'services/api_service.dart';
 import 'services/auth_storage.dart';
 import 'services/network_service.dart';
 import 'theme/app_theme.dart';
+import 'widgets/double_back_exit_scope.dart';
 
 /// Widest the app content grows on tablets / foldables / desktop windows.
 const double kMaxContentWidth = 640;
@@ -44,27 +45,31 @@ class JodoApp extends StatelessWidget {
         );
         return MediaQuery(
           data: mediaQuery.copyWith(textScaler: clampedScaler),
-          child: Stack(
-            children: [
-              if (child != null)
-                // On wide screens keep a phone-width column centred instead of
-                // stretching every screen edge to edge.
-                ColoredBox(
-                  color: AppColors.slate200,
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: kMaxContentWidth),
-                      child: child,
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+            child: Stack(
+              children: [
+                if (child != null)
+                  // On wide screens keep a phone-width column centred instead of
+                  // stretching every screen edge to edge.
+                  ColoredBox(
+                    color: AppColors.slate200,
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: kMaxContentWidth),
+                        child: child,
+                      ),
                     ),
                   ),
+                const Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: OfflineBannerBar(),
                 ),
-              const Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: OfflineBannerBar(),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },
@@ -264,52 +269,90 @@ class _JodoRootFlowState extends State<JodoRootFlow> {
   Widget build(BuildContext context) {
     switch (_currentScreen) {
       case AppScreen.welcome:
-        return WelcomeScreen(onSelectRole: _selectRole);
+        return DoubleBackExitScope(
+          child: WelcomeScreen(onSelectRole: _selectRole),
+        );
 
       case AppScreen.mobile:
-        return MobileScreen(
-          role: _role ?? UserRole.student,
-          onBack: _restart,
-          onContinue: (phone) {
-            setState(() {
-              _phone = phone;
-              _currentScreen = AppScreen.otp;
-            });
+        return PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop) _restart();
           },
+          child: MobileScreen(
+            role: _role ?? UserRole.student,
+            onBack: _restart,
+            onContinue: (phone) {
+              setState(() {
+                _phone = phone;
+                _currentScreen = AppScreen.otp;
+              });
+            },
+          ),
         );
 
       case AppScreen.otp:
-        return OTPScreen(
-          role: _role ?? UserRole.student,
-          phone: _phone,
-          onBack: () => _goTo(AppScreen.mobile),
-          onVerify: _verifyOtp,
+        return PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop) _goTo(AppScreen.mobile);
+          },
+          child: OTPScreen(
+            role: _role ?? UserRole.student,
+            phone: _phone,
+            onBack: () => _goTo(AppScreen.mobile),
+            onVerify: _verifyOtp,
+          ),
         );
 
       case AppScreen.ownerSetup:
-        return OwnerSetupScreen(
-          onBack: () => _goTo(AppScreen.otp),
-          onComplete: () => _goTo(AppScreen.adminDashboard),
+        return PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop) _goTo(AppScreen.otp);
+          },
+          child: OwnerSetupScreen(
+            onBack: () => _goTo(AppScreen.otp),
+            onComplete: () => _goTo(AppScreen.adminDashboard),
+          ),
         );
 
       case AppScreen.studentSetup:
-        return StudentSetupScreen(
-          onBack: () => _goTo(AppScreen.otp),
-          onComplete: () => _goTo(AppScreen.studentDashboard),
+        return PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop) _goTo(AppScreen.otp);
+          },
+          child: StudentSetupScreen(
+            onBack: () => _goTo(AppScreen.otp),
+            onComplete: () => _goTo(AppScreen.studentDashboard),
+          ),
         );
 
       case AppScreen.adminDashboard:
-        return DashboardLandingScreen(
-          role: UserRole.admin,
-          onContinue: () => _goTo(AppScreen.partnerHome),
-          onRestart: _restart,
+        return PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop) _restart();
+          },
+          child: DashboardLandingScreen(
+            role: UserRole.admin,
+            onContinue: () => _goTo(AppScreen.partnerHome),
+            onRestart: _restart,
+          ),
         );
 
       case AppScreen.studentDashboard:
-        return DashboardLandingScreen(
-          role: UserRole.student,
-          onContinue: () => _goTo(AppScreen.studentHome),
-          onRestart: _restart,
+        return PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop) _restart();
+          },
+          child: DashboardLandingScreen(
+            role: UserRole.student,
+            onContinue: () => _goTo(AppScreen.studentHome),
+            onRestart: _restart,
+          ),
         );
 
       case AppScreen.studentHome:
