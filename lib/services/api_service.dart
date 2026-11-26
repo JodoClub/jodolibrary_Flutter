@@ -504,11 +504,14 @@ class ApiService {
     try {
       final token = await AuthStorage.getToken();
       final uri = Uri.parse('${ApiConfig.baseUrl}/student/attendance/scan-qr');
-      final body = jsonEncode({
+      final bodyMap = <String, dynamic>{
         'qrPayload': qrPayload,
-        'latitude': latitude ?? 25.6093,
-        'longitude': longitude ?? 85.1376,
-      });
+      };
+      if (latitude != null && longitude != null) {
+        bodyMap['latitude'] = latitude;
+        bodyMap['longitude'] = longitude;
+      }
+      final body = jsonEncode(bodyMap);
 
       final response = await _client
           .post(uri, headers: _buildHeaders(token: token), body: body)

@@ -6,6 +6,7 @@ import '../models/library_business_model.dart';
 import '../services/api_config.dart';
 import '../services/api_service.dart';
 import '../services/auth_storage.dart';
+import '../services/location_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/brand_logo.dart';
 import '../widgets/custom_button.dart';
@@ -420,10 +421,32 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
       setState(() => _scannerStage = 'scanning');
     }
 
-    final res = await ApiService.scanAttendanceQr(qrPayload: qrPayload);
+    // 1. Fetch device live GPS coordinates for free geofence check
+    final locResult = await LocationService.getCurrentPosition();
+    if (!mounted) return;
+
+    if (!locResult.isSuccess) {
+      if (setModalState != null) {
+        setModalState(() => _scannerStage = 'aiming');
+      } else {
+        setState(() => _scannerStage = 'aiming');
+      }
+      _showAttendanceErrorDialog(
+        locResult.isServiceDisabled ? 'Turn On Device GPS 📍' : 'Location Permission Required 📍',
+        locResult.errorMessage ?? 'Device GPS location is required to verify physical attendance inside the library.',
+      );
+      return;
+    }
+
+    final res = await ApiService.scanAttendanceQr(
+      qrPayload: qrPayload,
+      latitude: locResult.latitude,
+      longitude: locResult.longitude,
+    );
     if (!mounted) return;
 
     if (res.success && res.data != null) {
+      AppHaptics.success();
       final data = res.data!;
       final punchType = data['punchType']?.toString() ?? (_isCheckedIn ? 'CHECK_OUT' : 'CHECK_IN');
       final timeStr = data['time']?.toString() ?? '';
@@ -455,13 +478,14 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
       } else {
         _showToast(
           'Attendance Marked as PRESENT! 🎉',
-          'Checked in at $timeStr · Library owner updated in real-time',
+          'Checked in at $timeStr · Geofence verified within premises',
         );
       }
 
       _loadStudentRequestsAndBookings();
       _loadAttendanceAndProductivity();
     } else {
+      AppHaptics.warning();
       if (setModalState != null) {
         setModalState(() => _scannerStage = 'aiming');
       } else {
@@ -490,9 +514,13 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
         errorTitle = 'Membership Expired ❌';
         errorBody =
             'Your library membership has expired. Please renew your plan to continue marking attendance.';
-      } else if (code == 'OUTSIDE_GEOFENCE') {
-        errorTitle = 'Outside Library Boundary ❌';
-        errorBody = 'You must be physically present at the library to mark attendance.';
+      } else if (code == 'OUTSIDE_GEOFENCE' || msg.toLowerCase().contains('geofence') || msg.toLowerCase().contains('must be at the library')) {
+        errorTitle = 'Outside Library Boundary 📍❌';
+        errorBody =
+            'You are outside the library premises. You must be physically present inside or within 150m of the library gate to mark attendance.';
+      } else if (code == 'LOCATION_REQUIRED') {
+        errorTitle = 'GPS Location Required 📍';
+        errorBody = 'Please turn on your phone GPS to verify attendance inside the library.';
       }
 
       _showAttendanceErrorDialog(errorTitle, errorBody);

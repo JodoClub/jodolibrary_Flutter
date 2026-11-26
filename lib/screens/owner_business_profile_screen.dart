@@ -10,6 +10,7 @@ import '../theme/app_theme.dart';
 import '../widgets/common_widgets.dart';
 import '../widgets/custom_button.dart';
 import '../utils/safe_url.dart';
+import '../services/location_service.dart';
 import 'library_details_screen.dart';
 
 /// Full Profile & Business Details Editor for Library Owners
@@ -276,6 +277,33 @@ class _OwnerBusinessProfileScreenState extends State<OwnerBusinessProfileScreen>
       }
     } catch (_) {
       _showToast('Invalid link format', 'Please check the Google Maps URL.');
+    }
+  }
+
+  bool _isCapturingGps = false;
+
+  Future<void> _captureGateGpsLocation() async {
+    setState(() => _isCapturingGps = true);
+    final loc = await LocationService.getCurrentPosition();
+    if (!mounted) return;
+    setState(() => _isCapturingGps = false);
+
+    if (loc.isSuccess && loc.position != null) {
+      final lat = loc.latitude!;
+      final lng = loc.longitude!;
+      final mapsUrl = 'https://www.google.com/maps/search/?api=1&query=$lat,$lng';
+      setState(() {
+        _mapsCtrl.text = mapsUrl;
+      });
+      _showToast(
+        'Gate GPS Captured! 📍',
+        'Coordinates: ${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}. Save profile to activate geofence.',
+      );
+    } else {
+      _showToast(
+        loc.isServiceDisabled ? 'Turn On GPS 📍' : 'Location Error 📍',
+        loc.errorMessage ?? 'Could not obtain gate GPS coordinates.',
+      );
     }
   }
 
@@ -1186,6 +1214,22 @@ class _OwnerBusinessProfileScreenState extends State<OwnerBusinessProfileScreen>
             runSpacing: 8,
             alignment: WrapAlignment.spaceBetween,
             children: [
+              ElevatedButton.icon(
+                onPressed: _isCapturingGps ? null : _captureGateGpsLocation,
+                icon: _isCapturingGps
+                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.my_location_rounded, size: 14),
+                label: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(_isCapturingGps ? 'Capturing GPS...' : '📍 Use Current GPS as Gate'),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.emerald600,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+                ),
+              ),
               OutlinedButton.icon(
                 onPressed: _testGoogleMaps,
                 icon: const Icon(Icons.open_in_new_rounded, size: 14),
