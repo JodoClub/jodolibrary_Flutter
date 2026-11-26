@@ -55,3 +55,8 @@ app.*.map.json
 env/*.json
 # Release obfuscation symbols
 build/symbols/
+
+# Android signing keystore & secrets (never commit to git)
+android/key.properties
+*.jks
+*.keystore

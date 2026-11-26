@@ -1,4 +1,4 @@
-package com.example.jodo_library
+package com.jodolibrary.app
 
 import android.content.Intent
 import android.content.pm.PackageManager
