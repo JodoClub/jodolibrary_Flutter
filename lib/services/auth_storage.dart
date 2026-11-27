@@ -23,6 +23,7 @@ class AuthStorage {
   static const String _keyStudentCode = 'jodo_student_code';
   static const String _keyDob = 'jodo_dob';
   static const String _keyOwnerPhoto = 'jodo_owner_photo';
+  static const String _keyFcmToken = 'jodo_fcm_token';
   static const String _keyAppBuild = 'jodo_app_installed_build';
   static const String currentAppBuild = 'v2_clean_release';
 
@@ -175,6 +176,9 @@ class AuthStorage {
   static Future<String?> getUserName() => _getString(_keyUserName);
 
   static Future<String?> getUserId() => _getString(_keyUserId);
+
+  static Future<void> saveFcmToken(String token) => _setString(_keyFcmToken, token);
+  static Future<String?> getFcmToken() => _getString(_keyFcmToken);
 
   static Future<bool> isLoggedIn() async {
     final token = await getToken();

@@ -12,6 +12,7 @@ import 'screens/welcome_screen.dart';
 import 'services/api_service.dart';
 import 'services/auth_storage.dart';
 import 'services/network_service.dart';
+import 'services/notification_service.dart';
 import 'theme/app_theme.dart';
 import 'widgets/double_back_exit_scope.dart';
 
@@ -23,6 +24,8 @@ Future<void> main() async {
   // Layouts are designed for portrait phones; lock until landscape is supported.
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   NetworkService.instance.initialize();
+  // Initialize Push Notifications (FCM + Local notifications)
+  NotificationService.instance.initialize();
   runApp(const JodoApp());
 }
 
@@ -169,6 +172,7 @@ class _JodoRootFlowState extends State<JodoRootFlow> {
       }
 
       // Valid session verified with live backend!
+      NotificationService.instance.syncTokenWithBackend();
       final user = meRes.data!['user'] as Map<String, dynamic>?;
       final profile = meRes.data!['profile'] as Map<String, dynamic>?;
       final phone = user?['phone'] ?? user?['mobile'] ?? await AuthStorage.getPhone();

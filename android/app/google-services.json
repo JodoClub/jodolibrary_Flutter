@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "514791389195",
+    "project_id": "jodo-library",
+    "storage_bucket": "jodo-library.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:514791389195:android:332331aec57e5096836f0e",
+        "android_client_info": {
+          "package_name": "com.jodolibrary.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCIAagEDugQMMxlkgCEGMTuPErUXoKwFJA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

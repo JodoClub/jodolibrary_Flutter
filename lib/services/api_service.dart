@@ -7,6 +7,7 @@ import '../models/app_models.dart';
 import 'api_config.dart';
 import 'auth_storage.dart';
 import 'network_service.dart';
+import 'notification_service.dart';
 
 class ApiResponse<T> {
   final bool success;
@@ -44,7 +45,34 @@ class _AuthAwareClient extends http.BaseClient {
 }
 
 class ApiService {
+  static final ApiService instance = ApiService._();
+  ApiService._();
+
   static const Duration _timeout = Duration(seconds: 12);
+
+  /// Register device FCM token with backend
+  Future<bool> registerFcmToken(String fcmToken) => registerDeviceFcmToken(fcmToken);
+
+  static Future<bool> registerDeviceFcmToken(String fcmToken) async {
+    try {
+      final token = await AuthStorage.getToken();
+      if (token == null || token.isEmpty) return false;
+
+      final uri = Uri.parse('${ApiConfig.baseUrl}/auth/fcm-token');
+      final response = await _client
+          .post(
+            uri,
+            headers: _buildHeaders(token: token),
+            body: jsonEncode({'fcmToken': fcmToken}),
+          )
+          .timeout(_timeout);
+
+      return response.statusCode == 200 || response.statusCode == 204;
+    } catch (e) {
+      if (kDebugMode) debugPrint('[ApiService] registerDeviceFcmToken error: $e');
+      return false;
+    }
+  }
 
   /// Max accepted size for a library photo upload (bytes).
   static const int maxUploadBytes = 8 * 1024 * 1024;
@@ -209,6 +237,8 @@ class ApiService {
         if (avatar != null && avatar.trim().isNotEmpty) {
           await AuthStorage.saveOwnerPhoto(avatar.trim());
         }
+        // Sync device FCM token for push notifications
+        NotificationService.instance.syncTokenWithBackend();
         return ApiResponse(success: true, data: json);
       } else {
         return ApiResponse(
