@@ -255,12 +255,64 @@ class ApiService {
     }
   }
 
+  /// Authenticate using Firebase Google ID Token
+  static Future<ApiResponse<Map<String, dynamic>>> googleLogin({
+    required String idToken,
+    required UserRole role,
+  }) async {
+    try {
+      final uri = Uri.parse('${ApiConfig.baseUrl}/auth/google');
+      final body = jsonEncode({
+        'idToken': idToken,
+        'role': role == UserRole.admin ? 'ADMIN' : 'STUDENT',
+      });
+
+      final response = await _client
+          .post(uri, headers: _buildHeaders(), body: body)
+          .timeout(_timeout);
+
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 200 && json['success'] == true) {
+        final token = json['token'] as String;
+        final user = json['user'] as Map<String, dynamic>?;
+        final phone = user?['phone']?.toString().replaceAll(RegExp(r'\D'), '') ?? '';
+        _sessionExpiredHandled = false;
+        await AuthStorage.saveSession(
+          token: token,
+          role: role,
+          phone: phone,
+          userId: user?['id'] as String?,
+          userName: user?['name'] as String?,
+        );
+        final avatar = user?['avatarUrl']?.toString() ?? user?['avatar']?.toString() ?? user?['photo']?.toString();
+        if (avatar != null && avatar.trim().isNotEmpty) {
+          await AuthStorage.saveOwnerPhoto(avatar.trim());
+        }
+        // Sync device FCM token for push notifications
+        NotificationService.instance.syncTokenWithBackend();
+        return ApiResponse(success: true, data: json);
+      } else {
+        return ApiResponse(
+          success: false,
+          code: json['code'] as String?,
+          message: json['message'] as String? ?? 'Google sign-in failed',
+        );
+      }
+    } catch (e) {
+      return ApiResponse(
+        success: false,
+        message: _formatNetworkError(e, 'Backend connection error'),
+      );
+    }
+  }
+
   /// Student initial profile setup
   static Future<ApiResponse<Map<String, dynamic>>> studentSetup({
     required String fullName,
     required String examCategory,
     required String emergencyContact,
     required String gender,
+    String? mobile,
   }) async {
     try {
       final token = await AuthStorage.getToken();
@@ -270,6 +322,7 @@ class ApiService {
         'examCategory': examCategory,
         'emergencyContact': emergencyContact.startsWith('+') ? emergencyContact : '+91$emergencyContact',
         'gender': gender,
+        if (mobile != null && mobile.trim().isNotEmpty) 'mobile': mobile.trim().replaceAll(RegExp(r'\D'), ''),
       });
 
       final response = await _client
@@ -300,6 +353,7 @@ class ApiService {
     required int totalSeats,
     double? latitude,
     double? longitude,
+    String? mobile,
   }) async {
     try {
       final token = await AuthStorage.getToken();
@@ -312,6 +366,7 @@ class ApiService {
         'totalSeats': totalSeats,
         'latitude': latitude ?? 25.6093,
         'longitude': longitude ?? 85.1376,
+        if (mobile != null && mobile.trim().isNotEmpty) 'mobile': mobile.trim().replaceAll(RegExp(r'\D'), ''),
       });
 
       final response = await _client

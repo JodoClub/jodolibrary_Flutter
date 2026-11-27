@@ -12,7 +12,28 @@
           "package_name": "com.jodolibrary.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "514791389195-bn8b37soo5lld5euj95043d3mi8nj6tt.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.jodolibrary.app",
+            "certificate_hash": "550f036cc54beebdd97b6af5298abbcea0b96597"
+          }
+        },
+        {
+          "client_id": "514791389195-ce4o8kj1nl19gcfq0fs7lr0cu5vbsjdk.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.jodolibrary.app",
+            "certificate_hash": "d3a1a444a9033b96a91f44dbc41da7aafeeea12e"
+          }
+        },
+        {
+          "client_id": "514791389195-5k6c7o0sm40lkqjqtp940kj8vo7f4s9l.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyCIAagEDugQMMxlkgCEGMTuPErUXoKwFJA"
@@ -20,7 +41,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "514791389195-5k6c7o0sm40lkqjqtp940kj8vo7f4s9l.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

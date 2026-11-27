@@ -172,6 +172,7 @@ class AuthStorage {
   }
 
   static Future<String?> getPhone() => _getString(_keyPhone);
+  static Future<void> savePhone(String phone) => _setString(_keyPhone, phone);
 
   static Future<String?> getUserName() => _getString(_keyUserName);
 

@@ -22,15 +22,18 @@ class OwnerSetupScreen extends StatefulWidget {
 
 class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
   final TextEditingController _ownerNameController = TextEditingController();
+  final TextEditingController _mobileController = TextEditingController();
   final TextEditingController _libraryNameController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
   final TextEditingController _seatCapacityController = TextEditingController(text: '60');
+  bool _hasExistingPhone = false;
 
   String? _selectedCity = 'Patna';
   DateTime _openingDate = DateTime.now();
   bool _isLoading = false;
 
   String? _ownerNameError;
+  String? _mobileError;
   String? _libraryNameError;
   String? _cityError;
   String? _addressError;
@@ -51,8 +54,31 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _loadInitialData();
+  }
+
+  Future<void> _loadInitialData() async {
+    final name = await AuthStorage.getUserName();
+    final phone = await AuthStorage.getPhone();
+    if (mounted) {
+      setState(() {
+        if (name != null && name.trim().isNotEmpty) {
+          _ownerNameController.text = name.trim();
+        }
+        if (phone != null && phone.trim().isNotEmpty && phone.replaceAll(RegExp(r'\D'), '').length >= 10) {
+          _mobileController.text = phone.trim();
+          _hasExistingPhone = true;
+        }
+      });
+    }
+  }
+
+  @override
   void dispose() {
     _ownerNameController.dispose();
+    _mobileController.dispose();
     _libraryNameController.dispose();
     _addressController.dispose();
     _seatCapacityController.dispose();
@@ -80,6 +106,23 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
         isValid = false;
       } else {
         _ownerNameError = null;
+      }
+
+      // 1b. Mobile validation (if not already authenticated via OTP)
+      final phone = _mobileController.text.trim();
+      if (!_hasExistingPhone) {
+        if (phone.isEmpty) {
+          _mobileError = 'Your mobile number is required';
+          isValid = false;
+        } else if (phone.length != 10) {
+          _mobileError = 'Mobile number must be exactly 10 digits';
+          isValid = false;
+        } else if (!RegExp(r'^[6-9]\d{9}$').hasMatch(phone)) {
+          _mobileError = 'Number must start with 6, 7, 8, or 9';
+          isValid = false;
+        } else {
+          _mobileError = null;
+        }
       }
 
       // 2. Library Name validation
@@ -155,12 +198,16 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
         address: address,
         city: _selectedCity!,
         totalSeats: seats,
+        mobile: !_hasExistingPhone ? _mobileController.text.trim() : null,
       );
 
       if (!mounted) return;
       setState(() => _isLoading = false);
 
       if (res.success) {
+        if (!_hasExistingPhone) {
+          await AuthStorage.savePhone(_mobileController.text.trim());
+        }
         await AuthStorage.saveOwnerProfile(
           ownerName: ownerName,
           libraryName: libraryName,
@@ -244,6 +291,23 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
                         if (_ownerNameError != null) setState(() => _ownerNameError = null);
                       },
                     ),
+                    if (!_hasExistingPhone) ...[
+                      const SizedBox(height: 16),
+                      FormFieldWidget(
+                        controller: _mobileController,
+                        label: 'Your Mobile Number *',
+                        placeholder: '10-digit mobile number',
+                        keyboardType: TextInputType.phone,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(10),
+                        ],
+                        errorText: _mobileError,
+                        onChanged: (val) {
+                          if (_mobileError != null) setState(() => _mobileError = null);
+                        },
+                      ),
+                    ],
                     const SizedBox(height: 16),
 
                     FormFieldWidget(

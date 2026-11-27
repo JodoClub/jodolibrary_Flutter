@@ -22,7 +22,9 @@ class StudentSetupScreen extends StatefulWidget {
 
 class _StudentSetupScreenState extends State<StudentSetupScreen> {
   final TextEditingController _fullNameController = TextEditingController();
+  final TextEditingController _mobileController = TextEditingController();
   final TextEditingController _emergencyContactController = TextEditingController();
+  bool _hasExistingPhone = false;
 
   String _selectedExam = 'UPSC';
   String _selectedGender = 'Male';
@@ -30,6 +32,7 @@ class _StudentSetupScreenState extends State<StudentSetupScreen> {
   bool _isLoading = false;
 
   String? _nameError;
+  String? _mobileError;
   String? _emergencyError;
 
   final List<String> _exams = const [
@@ -44,8 +47,31 @@ class _StudentSetupScreenState extends State<StudentSetupScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _loadInitialData();
+  }
+
+  Future<void> _loadInitialData() async {
+    final name = await AuthStorage.getUserName();
+    final phone = await AuthStorage.getPhone();
+    if (mounted) {
+      setState(() {
+        if (name != null && name.trim().isNotEmpty) {
+          _fullNameController.text = name.trim();
+        }
+        if (phone != null && phone.trim().isNotEmpty && phone.replaceAll(RegExp(r'\D'), '').length >= 10) {
+          _mobileController.text = phone.trim();
+          _hasExistingPhone = true;
+        }
+      });
+    }
+  }
+
+  @override
   void dispose() {
     _fullNameController.dispose();
+    _mobileController.dispose();
     _emergencyContactController.dispose();
     super.dispose();
   }
@@ -70,7 +96,24 @@ class _StudentSetupScreenState extends State<StudentSetupScreen> {
         _nameError = null;
       }
 
-      // 2. Emergency Contact Validation
+      // 2. Mobile Number Validation (if new user without phone)
+      final phone = _mobileController.text.trim();
+      if (!_hasExistingPhone) {
+        if (phone.isEmpty) {
+          _mobileError = 'Your mobile number is required';
+          isValid = false;
+        } else if (phone.length != 10) {
+          _mobileError = 'Mobile number must be exactly 10 digits';
+          isValid = false;
+        } else if (!RegExp(r'^[6-9]\d{9}$').hasMatch(phone)) {
+          _mobileError = 'Number must start with 6, 7, 8, or 9';
+          isValid = false;
+        } else {
+          _mobileError = null;
+        }
+      }
+
+      // 3. Emergency Contact Validation
       if (emergency.isEmpty) {
         _emergencyError = 'Emergency contact is required';
         isValid = false;
@@ -110,12 +153,16 @@ class _StudentSetupScreenState extends State<StudentSetupScreen> {
         examCategory: _selectedExam,
         emergencyContact: emergency,
         gender: _selectedGender,
+        mobile: _hasExistingPhone ? null : _mobileController.text.trim(),
       );
 
       if (!mounted) return;
       setState(() => _isLoading = false);
 
       if (res.success) {
+        if (!_hasExistingPhone && _mobileController.text.trim().isNotEmpty) {
+          await AuthStorage.savePhone(_mobileController.text.trim());
+        }
         await AuthStorage.saveStudentProfile(
           fullName: name,
           examCategory: _selectedExam,
@@ -201,6 +248,26 @@ class _StudentSetupScreenState extends State<StudentSetupScreen> {
                         },
                       ),
                       const SizedBox(height: 18),
+
+                      if (!_hasExistingPhone) ...[
+                        FormFieldWidget(
+                          controller: _mobileController,
+                          label: 'Your Mobile Number *',
+                          placeholder: '98765 43210',
+                          prefix: '+91',
+                          keyboardType: TextInputType.phone,
+                          textInputAction: TextInputAction.next,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            LengthLimitingTextInputFormatter(10),
+                          ],
+                          errorText: _mobileError,
+                          onChanged: (val) {
+                            if (_mobileError != null) setState(() => _mobileError = null);
+                          },
+                        ),
+                        const SizedBox(height: 18),
+                      ],
 
                       DropdownFieldWidget(
                         label: 'Target Exam / Preparation *',

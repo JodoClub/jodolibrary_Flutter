@@ -1,14 +1,87 @@
 import 'package:flutter/material.dart';
 import '../models/app_models.dart';
+import '../services/api_service.dart';
+import '../services/google_auth_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/brand_logo.dart';
 import '../widgets/custom_button.dart';
 import 'enquiry_screen.dart';
 
-class WelcomeScreen extends StatelessWidget {
+class WelcomeScreen extends StatefulWidget {
   final ValueChanged<UserRole> onSelectRole;
+  final void Function(UserRole role, AccountType accountType) onLoginSuccess;
 
-  const WelcomeScreen({super.key, required this.onSelectRole});
+  const WelcomeScreen({
+    super.key,
+    required this.onSelectRole,
+    required this.onLoginSuccess,
+  });
+
+  @override
+  State<WelcomeScreen> createState() => _WelcomeScreenState();
+}
+
+class _WelcomeScreenState extends State<WelcomeScreen> {
+  bool _isLoading = false;
+  UserRole? _activeRole;
+
+  Future<void> _handleGoogleSignIn(UserRole role) async {
+    setState(() {
+      _isLoading = true;
+      _activeRole = role;
+    });
+
+    try {
+      final googleResult = await GoogleAuthService.signInWithGoogle();
+      if (googleResult == null) {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _activeRole = null;
+          });
+        }
+        return;
+      }
+
+      final res = await ApiService.googleLogin(
+        idToken: googleResult.idToken,
+        role: role,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _activeRole = null;
+      });
+
+      if (res.success && res.data != null) {
+        final accountTypeStr = res.data!['accountType'] as String? ?? 'new';
+        final accountType = accountTypeStr == 'returning'
+            ? AccountType.returning
+            : AccountType.firstTime;
+        widget.onLoginSuccess(role, accountType);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(res.message ?? 'Google Sign-in failed. Please try again.'),
+            backgroundColor: AppColors.rose600,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _activeRole = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Sign-in error: ${e.toString()}'),
+          backgroundColor: AppColors.rose600,
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -116,19 +189,86 @@ class WelcomeScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 14),
+              // Google Sign-In for Student
               CustomButton(
-                label: 'Student Login / Signup',
-                leading: const Icon(Icons.school, color: Colors.white, size: 20),
-                onPressed: () => onSelectRole(UserRole.student),
+                label: _isLoading && _activeRole == UserRole.student
+                    ? 'Connecting Google...'
+                    : 'Continue with Google (Student)',
+                leading: _isLoading && _activeRole == UserRole.student
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const _GoogleGIcon(),
+                onPressed: _isLoading ? null : () => _handleGoogleSignIn(UserRole.student),
               ),
               const SizedBox(height: 12),
+              // Google Sign-In for Library Owner
               CustomButton(
-                label: 'Library Owner Login / Signup',
+                label: _isLoading && _activeRole == UserRole.admin
+                    ? 'Connecting Google...'
+                    : 'Continue with Google (Library Owner)',
                 variant: ButtonVariant.secondary,
-                leading: const Icon(Icons.apartment, color: AppColors.slate800, size: 20),
-                onPressed: () => onSelectRole(UserRole.admin),
+                leading: _isLoading && _activeRole == UserRole.admin
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.slate800),
+                      )
+                    : const _GoogleGIcon(),
+                onPressed: _isLoading ? null : () => _handleGoogleSignIn(UserRole.admin),
               ),
               const SizedBox(height: 14),
+              // Fallback: Login with Mobile OTP
+              Center(
+                child: Wrap(
+                  alignment: WrapAlignment.center,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    const Text(
+                      'Or sign in with Mobile OTP: ',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.slate500,
+                      ),
+                    ),
+                    InkWell(
+                      onTap: _isLoading ? null : () => widget.onSelectRole(UserRole.student),
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                        child: Text(
+                          'Student',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.primary,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const Text('·', style: TextStyle(color: AppColors.slate400, fontWeight: FontWeight.bold)),
+                    InkWell(
+                      onTap: _isLoading ? null : () => widget.onSelectRole(UserRole.admin),
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                        child: Text(
+                          'Library Owner',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.primary,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
               InkWell(
                 onTap: () {
                   Navigator.push(
@@ -244,6 +384,39 @@ class WelcomeScreen extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _GoogleGIcon extends StatelessWidget {
+  const _GoogleGIcon();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 22,
+      height: 22,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black12,
+            blurRadius: 3,
+            offset: Offset(0, 1),
+          ),
+        ],
+      ),
+      alignment: Alignment.center,
+      child: const Text(
+        'G',
+        style: TextStyle(
+          color: Color(0xFF4285F4),
+          fontWeight: FontWeight.w900,
+          fontSize: 14,
+          fontFamily: 'sans-serif',
+        ),
+      ),
     );
   }
 }

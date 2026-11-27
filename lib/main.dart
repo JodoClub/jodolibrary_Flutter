@@ -274,7 +274,23 @@ class _JodoRootFlowState extends State<JodoRootFlow> {
     switch (_currentScreen) {
       case AppScreen.welcome:
         return DoubleBackExitScope(
-          child: WelcomeScreen(onSelectRole: _selectRole),
+          child: WelcomeScreen(
+            onSelectRole: _selectRole,
+            onLoginSuccess: (role, accountType) {
+              setState(() {
+                _role = role;
+                if (accountType == AccountType.returning) {
+                  _currentScreen = role == UserRole.admin
+                      ? AppScreen.partnerHome
+                      : AppScreen.studentHome;
+                } else {
+                  _currentScreen = role == UserRole.admin
+                      ? AppScreen.ownerSetup
+                      : AppScreen.studentSetup;
+                }
+              });
+            },
+          ),
         );
 
       case AppScreen.mobile:
@@ -313,10 +329,10 @@ class _JodoRootFlowState extends State<JodoRootFlow> {
         return PopScope(
           canPop: false,
           onPopInvokedWithResult: (didPop, _) {
-            if (!didPop) _goTo(AppScreen.otp);
+            if (!didPop) _restart();
           },
           child: OwnerSetupScreen(
-            onBack: () => _goTo(AppScreen.otp),
+            onBack: _restart,
             onComplete: () => _goTo(AppScreen.adminDashboard),
           ),
         );
@@ -325,10 +341,10 @@ class _JodoRootFlowState extends State<JodoRootFlow> {
         return PopScope(
           canPop: false,
           onPopInvokedWithResult: (didPop, _) {
-            if (!didPop) _goTo(AppScreen.otp);
+            if (!didPop) _restart();
           },
           child: StudentSetupScreen(
-            onBack: () => _goTo(AppScreen.otp),
+            onBack: _restart,
             onComplete: () => _goTo(AppScreen.studentDashboard),
           ),
         );
