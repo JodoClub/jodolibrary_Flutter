@@ -12,7 +12,7 @@
 /// NOTE: if API_BASE_URL is plain HTTP, its host must also be listed in
 /// android/app/src/main/res/xml/network_security_config.xml.
 class ApiConfig {
-  static const String _defaultBaseUrl = 'http://130.210.33.128:5000/api/v1';
+  static const String _defaultBaseUrl = 'https://api.jodolibrary.in/api/v1';
 
   /// Base API URL pointing to the Spring Boot backend.
   static const String baseUrl =
