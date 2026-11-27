@@ -1,3 +1,4 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'models/app_models.dart';
@@ -23,9 +24,25 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Layouts are designed for portrait phones; lock until landscape is supported.
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-  NetworkService.instance.initialize();
-  // Initialize Push Notifications (FCM + Local notifications)
-  NotificationService.instance.initialize();
+
+  try {
+    await Firebase.initializeApp();
+  } catch (e, st) {
+    debugPrint('[Firebase] Startup initialization error: $e\n$st');
+  }
+
+  try {
+    NetworkService.instance.initialize();
+  } catch (e) {
+    debugPrint('[Network] Initialization error: $e');
+  }
+
+  try {
+    NotificationService.instance.initialize();
+  } catch (e) {
+    debugPrint('[FCM] NotificationService init error: $e');
+  }
+
   runApp(const JodoApp());
 }
 
