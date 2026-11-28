@@ -255,6 +255,102 @@ class ApiService {
     }
   }
 
+  /// Login using registered mobile number and strong password
+  static Future<ApiResponse<Map<String, dynamic>>> loginWithPassword({
+    required String mobile,
+    required String password,
+    required UserRole role,
+  }) async {
+    try {
+      final cleanMobile = mobile.replaceAll(RegExp(r'\D'), '');
+      final uri = Uri.parse('${ApiConfig.baseUrl}/auth/login-password');
+      final body = jsonEncode({
+        'mobile': cleanMobile,
+        'countryCode': '+91',
+        'password': password,
+        'role': role == UserRole.admin ? 'ADMIN' : 'STUDENT',
+      });
+
+      final response = await _client
+          .post(uri, headers: _buildHeaders(), body: body)
+          .timeout(_timeout);
+
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 200 && json['success'] == true) {
+        final token = json['token'] as String;
+        final user = json['user'] as Map<String, dynamic>?;
+        _sessionExpiredHandled = false;
+        await AuthStorage.saveSession(
+          token: token,
+          role: role,
+          phone: cleanMobile,
+          userId: user?['id'] as String?,
+          userName: user?['name'] as String?,
+          authMethod: 'PASSWORD',
+          hasPassword: user?['hasPassword'] as bool? ?? true,
+        );
+        final avatar = user?['avatarUrl']?.toString() ?? user?['avatar']?.toString() ?? user?['photo']?.toString();
+        if (avatar != null && avatar.trim().isNotEmpty) {
+          await AuthStorage.saveOwnerPhoto(avatar.trim());
+        }
+        NotificationService.instance.syncTokenWithBackend();
+        return ApiResponse(success: true, data: json);
+      } else {
+        int? retrySec = (json['retryAfterSeconds'] as num?)?.toInt();
+        if (retrySec == null && response.headers['retry-after'] != null) {
+          retrySec = int.tryParse(response.headers['retry-after']!);
+        }
+        if (retrySec == null && (response.statusCode == 429 || json['code'] == 'PASSWORD_RATE_LIMIT')) {
+          retrySec = 60;
+        }
+        return ApiResponse(
+          success: false,
+          code: json['code'] as String?,
+          message: json['message'] as String? ?? 'Invalid mobile number or password',
+          retryAfterSeconds: retrySec,
+        );
+      }
+    } catch (e) {
+      return ApiResponse(
+        success: false,
+        message: _formatNetworkError(e, 'Backend connection error'),
+      );
+    }
+  }
+
+  /// Set or reset strong password for the authenticated user
+  static Future<ApiResponse<Map<String, dynamic>>> resetPassword({
+    String? currentPassword,
+    required String newPassword,
+  }) async {
+    try {
+      final token = await AuthStorage.getToken();
+      final uri = Uri.parse('${ApiConfig.baseUrl}/auth/reset-password');
+      final body = jsonEncode({
+        if (currentPassword != null && currentPassword.isNotEmpty) 'currentPassword': currentPassword,
+        'newPassword': newPassword,
+      });
+
+      final response = await _client
+          .post(uri, headers: _buildHeaders(token: token), body: body)
+          .timeout(_timeout);
+
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode >= 200 && response.statusCode < 300 && json['success'] == true) {
+        await AuthStorage.saveHasPassword(true);
+        return ApiResponse(success: true, data: json);
+      } else {
+        return ApiResponse(
+          success: false,
+          code: json['code'] as String?,
+          message: json['message'] as String? ?? 'Failed to update password',
+        );
+      }
+    } catch (e) {
+      return ApiResponse(success: false, message: _formatNetworkError(e));
+    }
+  }
+
   /// Authenticate using Firebase Google ID Token
   static Future<ApiResponse<Map<String, dynamic>>> googleLogin({
     required String idToken,
@@ -283,6 +379,8 @@ class ApiService {
           phone: phone,
           userId: user?['id'] as String?,
           userName: user?['name'] as String?,
+          authMethod: 'GOOGLE',
+          hasPassword: user?['hasPassword'] as bool? ?? false,
         );
         final avatar = user?['avatarUrl']?.toString() ?? user?['avatar']?.toString() ?? user?['photo']?.toString();
         if (avatar != null && avatar.trim().isNotEmpty) {
@@ -313,6 +411,7 @@ class ApiService {
     required String emergencyContact,
     required String gender,
     String? mobile,
+    String? password,
   }) async {
     try {
       final token = await AuthStorage.getToken();
@@ -323,6 +422,7 @@ class ApiService {
         'emergencyContact': emergencyContact.startsWith('+') ? emergencyContact : '+91$emergencyContact',
         'gender': gender,
         if (mobile != null && mobile.trim().isNotEmpty) 'mobile': mobile.trim().replaceAll(RegExp(r'\D'), ''),
+        if (password != null && password.isNotEmpty) 'password': password,
       });
 
       final response = await _client
@@ -331,6 +431,9 @@ class ApiService {
 
       final json = jsonDecode(response.body) as Map<String, dynamic>;
       if (response.statusCode >= 200 && response.statusCode < 300) {
+        if (password != null && password.isNotEmpty) {
+          await AuthStorage.saveHasPassword(true);
+        }
         return ApiResponse(success: true, data: json);
       } else {
         return ApiResponse(
@@ -354,6 +457,7 @@ class ApiService {
     double? latitude,
     double? longitude,
     String? mobile,
+    String? password,
   }) async {
     try {
       final token = await AuthStorage.getToken();
@@ -367,6 +471,7 @@ class ApiService {
         'latitude': latitude ?? 25.6093,
         'longitude': longitude ?? 85.1376,
         if (mobile != null && mobile.trim().isNotEmpty) 'mobile': mobile.trim().replaceAll(RegExp(r'\D'), ''),
+        if (password != null && password.isNotEmpty) 'password': password,
       });
 
       final response = await _client
@@ -375,6 +480,9 @@ class ApiService {
 
       final json = jsonDecode(response.body) as Map<String, dynamic>;
       if (response.statusCode >= 200 && response.statusCode < 300) {
+        if (password != null && password.isNotEmpty) {
+          await AuthStorage.saveHasPassword(true);
+        }
         return ApiResponse(success: true, data: json);
       } else {
         return ApiResponse(
@@ -402,6 +510,9 @@ class ApiService {
         final user = json['user'] as Map<String, dynamic>?;
         final profile = json['profile'] as Map<String, dynamic>?;
         if (user != null) {
+          if (user['hasPassword'] != null) {
+            await AuthStorage.saveHasPassword(user['hasPassword'] == true);
+          }
           final role = await AuthStorage.getRole();
           if (role == UserRole.admin && profile != null) {
             final avatarUrl = user['avatarUrl']?.toString() ?? user['avatar']?.toString() ?? user['photo']?.toString();

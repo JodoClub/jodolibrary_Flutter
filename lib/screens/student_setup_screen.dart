@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../services/api_service.dart';
 import '../services/auth_storage.dart';
 import '../theme/app_theme.dart';
+import '../utils/password_helper.dart';
 import '../widgets/common_widgets.dart';
 import '../widgets/custom_button.dart';
 
@@ -24,7 +25,12 @@ class _StudentSetupScreenState extends State<StudentSetupScreen> {
   final TextEditingController _fullNameController = TextEditingController();
   final TextEditingController _mobileController = TextEditingController();
   final TextEditingController _emergencyContactController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _confirmPasswordController = TextEditingController();
   bool _hasExistingPhone = false;
+  bool _hasExistingPassword = false;
+  bool _obscurePassword = true;
+  bool _obscureConfirm = true;
 
   String _selectedExam = 'UPSC';
   String _selectedGender = 'Male';
@@ -34,6 +40,8 @@ class _StudentSetupScreenState extends State<StudentSetupScreen> {
   String? _nameError;
   String? _mobileError;
   String? _emergencyError;
+  String? _passwordError;
+  String? _confirmPasswordError;
 
   final List<String> _exams = const [
     'UPSC',
@@ -55,6 +63,7 @@ class _StudentSetupScreenState extends State<StudentSetupScreen> {
   Future<void> _loadInitialData() async {
     final name = await AuthStorage.getUserName();
     final phone = await AuthStorage.getPhone();
+    final hasPwd = await AuthStorage.getHasPassword();
     if (mounted) {
       setState(() {
         if (name != null && name.trim().isNotEmpty) {
@@ -64,6 +73,7 @@ class _StudentSetupScreenState extends State<StudentSetupScreen> {
           _mobileController.text = phone.trim();
           _hasExistingPhone = true;
         }
+        _hasExistingPassword = hasPwd;
       });
     }
   }
@@ -73,6 +83,8 @@ class _StudentSetupScreenState extends State<StudentSetupScreen> {
     _fullNameController.dispose();
     _mobileController.dispose();
     _emergencyContactController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
     super.dispose();
   }
 
@@ -126,6 +138,27 @@ class _StudentSetupScreenState extends State<StudentSetupScreen> {
       } else {
         _emergencyError = null;
       }
+
+      // 4. Mandatory Strong Password Validation
+      if (!_hasExistingPassword) {
+        final pwdErr = PasswordHelper.validateStrongPassword(_passwordController.text);
+        if (pwdErr != null) {
+          _passwordError = pwdErr;
+          isValid = false;
+        } else {
+          _passwordError = null;
+        }
+        final confirm = _confirmPasswordController.text;
+        if (confirm.isEmpty) {
+          _confirmPasswordError = 'Please confirm your password';
+          isValid = false;
+        } else if (confirm != _passwordController.text) {
+          _confirmPasswordError = 'Passwords do not match';
+          isValid = false;
+        } else {
+          _confirmPasswordError = null;
+        }
+      }
     });
 
     return isValid;
@@ -154,6 +187,7 @@ class _StudentSetupScreenState extends State<StudentSetupScreen> {
         emergencyContact: emergency,
         gender: _selectedGender,
         mobile: _hasExistingPhone ? null : _mobileController.text.trim(),
+        password: _hasExistingPassword ? null : _passwordController.text,
       );
 
       if (!mounted) return;
@@ -315,6 +349,50 @@ class _StudentSetupScreenState extends State<StudentSetupScreen> {
                         value: _selectedGender,
                         onChanged: (val) => setState(() => _selectedGender = val),
                       ),
+
+                      if (!_hasExistingPassword) ...[
+                        const SizedBox(height: 18),
+                        FormFieldWidget(
+                          controller: _passwordController,
+                          label: 'Create Strong Password *',
+                          placeholder: 'Min 8 chars, upper, lower, number, symbol',
+                          obscureText: _obscurePassword,
+                          textInputAction: TextInputAction.next,
+                          errorText: _passwordError,
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                              size: 18,
+                              color: AppColors.slate500,
+                            ),
+                            onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                          ),
+                          onChanged: (_) => setState(() => _passwordError = null),
+                        ),
+                        const SizedBox(height: 10),
+                        PasswordRulesChecklist(password: _passwordController.text),
+                        const SizedBox(height: 18),
+                        FormFieldWidget(
+                          controller: _confirmPasswordController,
+                          label: 'Confirm Password *',
+                          placeholder: 'Re-enter your password',
+                          obscureText: _obscureConfirm,
+                          textInputAction: TextInputAction.done,
+                          onSubmitted: (_) => _handleSubmit(),
+                          errorText: _confirmPasswordError,
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscureConfirm ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                              size: 18,
+                              color: AppColors.slate500,
+                            ),
+                            onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
+                          ),
+                          onChanged: (_) {
+                            if (_confirmPasswordError != null) setState(() => _confirmPasswordError = null);
+                          },
+                        ),
+                      ],
 
                       const SizedBox(height: 32),
                       CustomButton(

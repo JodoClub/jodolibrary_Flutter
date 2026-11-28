@@ -24,6 +24,8 @@ class AuthStorage {
   static const String _keyDob = 'jodo_dob';
   static const String _keyOwnerPhoto = 'jodo_owner_photo';
   static const String _keyFcmToken = 'jodo_fcm_token';
+  static const String _keyAuthMethod = 'jodo_auth_method';
+  static const String _keyHasPassword = 'jodo_has_password';
   static const String _keyAppBuild = 'jodo_app_installed_build';
   static const String currentAppBuild = 'v2_clean_release';
 
@@ -97,12 +99,16 @@ class AuthStorage {
     required String phone,
     String? userId,
     String? userName,
+    String? authMethod,
+    bool? hasPassword,
   }) async {
     await _setString(_keyToken, token);
     await _setString(_keyRole, role == UserRole.admin ? 'ADMIN' : 'STUDENT');
     await _setString(_keyPhone, phone);
     if (userId != null) await _setString(_keyUserId, userId);
     if (userName != null) await _setString(_keyUserName, userName);
+    if (authMethod != null) await _setString(_keyAuthMethod, authMethod);
+    if (hasPassword != null) await _setString(_keyHasPassword, hasPassword ? 'true' : 'false');
   }
 
   static Future<void> saveOwnerProfile({
@@ -180,6 +186,11 @@ class AuthStorage {
 
   static Future<void> saveFcmToken(String token) => _setString(_keyFcmToken, token);
   static Future<String?> getFcmToken() => _getString(_keyFcmToken);
+  static Future<void> saveAuthMethod(String method) => _setString(_keyAuthMethod, method);
+  static Future<String?> getAuthMethod() => _getString(_keyAuthMethod);
+  static Future<void> saveHasPassword(bool hasPassword) =>
+      _setString(_keyHasPassword, hasPassword ? 'true' : 'false');
+  static Future<bool> getHasPassword() async => (await _getString(_keyHasPassword)) == 'true';
 
   static Future<bool> isLoggedIn() async {
     final token = await getToken();

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../services/api_service.dart';
 import '../services/auth_storage.dart';
 import '../theme/app_theme.dart';
+import '../utils/password_helper.dart';
 import '../widgets/common_widgets.dart';
 import '../widgets/custom_button.dart';
 
@@ -26,7 +27,12 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
   final TextEditingController _libraryNameController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
   final TextEditingController _seatCapacityController = TextEditingController(text: '60');
+  final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _confirmPasswordController = TextEditingController();
   bool _hasExistingPhone = false;
+  bool _hasExistingPassword = false;
+  bool _obscurePassword = true;
+  bool _obscureConfirm = true;
 
   String? _selectedCity = 'Patna';
   DateTime _openingDate = DateTime.now();
@@ -38,6 +44,8 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
   String? _cityError;
   String? _addressError;
   String? _seatCapacityError;
+  String? _passwordError;
+  String? _confirmPasswordError;
 
   final List<String> _cities = const [
     'Patna',
@@ -62,6 +70,7 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
   Future<void> _loadInitialData() async {
     final name = await AuthStorage.getUserName();
     final phone = await AuthStorage.getPhone();
+    final hasPwd = await AuthStorage.getHasPassword();
     if (mounted) {
       setState(() {
         if (name != null && name.trim().isNotEmpty) {
@@ -71,6 +80,7 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
           _mobileController.text = phone.trim();
           _hasExistingPhone = true;
         }
+        _hasExistingPassword = hasPwd;
       });
     }
   }
@@ -82,6 +92,8 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
     _libraryNameController.dispose();
     _addressController.dispose();
     _seatCapacityController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
     super.dispose();
   }
 
@@ -168,6 +180,27 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
       } else {
         _seatCapacityError = null;
       }
+
+      // 6. Mandatory Strong Password Validation
+      if (!_hasExistingPassword) {
+        final pwdErr = PasswordHelper.validateStrongPassword(_passwordController.text);
+        if (pwdErr != null) {
+          _passwordError = pwdErr;
+          isValid = false;
+        } else {
+          _passwordError = null;
+        }
+        final confirm = _confirmPasswordController.text;
+        if (confirm.isEmpty) {
+          _confirmPasswordError = 'Please confirm your password';
+          isValid = false;
+        } else if (confirm != _passwordController.text) {
+          _confirmPasswordError = 'Passwords do not match';
+          isValid = false;
+        } else {
+          _confirmPasswordError = null;
+        }
+      }
     });
 
     return isValid;
@@ -199,6 +232,7 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
         city: _selectedCity!,
         totalSeats: seats,
         mobile: !_hasExistingPhone ? _mobileController.text.trim() : null,
+        password: _hasExistingPassword ? null : _passwordController.text,
       );
 
       if (!mounted) return;
@@ -371,6 +405,50 @@ class _OwnerSetupScreenState extends State<OwnerSetupScreen> {
                         setState(() => _openingDate = date);
                       },
                     ),
+
+                    if (!_hasExistingPassword) ...[
+                      const SizedBox(height: 16),
+                      FormFieldWidget(
+                        controller: _passwordController,
+                        label: 'Create Strong Password *',
+                        placeholder: 'Min 8 chars, upper, lower, number, symbol',
+                        obscureText: _obscurePassword,
+                        textInputAction: TextInputAction.next,
+                        errorText: _passwordError,
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                            size: 18,
+                            color: AppColors.slate500,
+                          ),
+                          onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                        ),
+                        onChanged: (_) => setState(() => _passwordError = null),
+                      ),
+                      const SizedBox(height: 10),
+                      PasswordRulesChecklist(password: _passwordController.text),
+                      const SizedBox(height: 16),
+                      FormFieldWidget(
+                        controller: _confirmPasswordController,
+                        label: 'Confirm Password *',
+                        placeholder: 'Re-enter your password',
+                        obscureText: _obscureConfirm,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _handleSubmit(),
+                        errorText: _confirmPasswordError,
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscureConfirm ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                            size: 18,
+                            color: AppColors.slate500,
+                          ),
+                          onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
+                        ),
+                        onChanged: (_) {
+                          if (_confirmPasswordError != null) setState(() => _confirmPasswordError = null);
+                        },
+                      ),
+                    ],
 
                     const SizedBox(height: 32),
                     CustomButton(

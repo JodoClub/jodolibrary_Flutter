@@ -18,6 +18,7 @@ import '../widgets/double_back_exit_scope.dart';
 import '../widgets/custom_button.dart';
 import '../widgets/qr_code_widget.dart';
 import '../widgets/common_widgets.dart';
+import '../widgets/password_reset_sheet.dart';
 import 'library_details_screen.dart';
 import 'owner_business_profile_screen.dart';
 
@@ -3325,6 +3326,36 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
                         ),
                       ),
                     ),
+                    const SizedBox(width: 8),
+                    Tooltip(
+                      message: 'Profile Settings',
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(20),
+                        onTap: () => ProfileSettingsSheet.show(context),
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.18),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1.2),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.2),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          alignment: Alignment.center,
+                          child: const Icon(
+                            Icons.settings_rounded,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -3341,6 +3372,9 @@ class _PartnerHomeScreenState extends State<PartnerHomeScreen> {
               const SizedBox(height: 14),
 
               _buildFeeCollectionsSection(),
+              const SizedBox(height: 14),
+
+              const ProfileSettingsTile(),
               const SizedBox(height: 14),
 
               CustomButton(

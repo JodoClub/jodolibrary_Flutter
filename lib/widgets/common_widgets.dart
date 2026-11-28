@@ -66,6 +66,7 @@ class FormFieldWidget extends StatelessWidget {
   final bool readOnly;
   final VoidCallback? onTap;
   final Widget? suffixIcon;
+  final bool obscureText;
 
   const FormFieldWidget({
     super.key,
@@ -83,6 +84,7 @@ class FormFieldWidget extends StatelessWidget {
     this.readOnly = false,
     this.onTap,
     this.suffixIcon,
+    this.obscureText = false,
   });
 
   @override
@@ -151,6 +153,7 @@ class FormFieldWidget extends StatelessWidget {
                   inputFormatters: inputFormatters,
                   maxLength: maxLength,
                   readOnly: readOnly,
+                  obscureText: obscureText,
                   onTap: onTap,
                   style: const TextStyle(
                     fontSize: 14,

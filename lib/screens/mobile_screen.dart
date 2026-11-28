@@ -12,13 +12,13 @@ import 'enquiry_screen.dart';
 class MobileScreen extends StatefulWidget {
   final UserRole role;
   final VoidCallback onBack;
-  final ValueChanged<String> onContinue;
+  final ValueChanged<AccountType> onLoginSuccess;
 
   const MobileScreen({
     super.key,
     required this.role,
     required this.onBack,
-    required this.onContinue,
+    required this.onLoginSuccess,
   });
 
   @override
@@ -27,8 +27,11 @@ class MobileScreen extends StatefulWidget {
 
 class _MobileScreenState extends State<MobileScreen> {
   final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
   bool _isLoading = false;
+  bool _obscurePassword = true;
   String? _phoneError;
+  String? _passwordError;
   int _lockRemainingSeconds = 0;
   Timer? _lockTimer;
 
@@ -36,6 +39,7 @@ class _MobileScreenState extends State<MobileScreen> {
   void dispose() {
     _lockTimer?.cancel();
     _phoneController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 
@@ -43,7 +47,7 @@ class _MobileScreenState extends State<MobileScreen> {
     _lockTimer?.cancel();
     setState(() {
       _lockRemainingSeconds = seconds;
-      _phoneError = 'Rate limit locked. Please wait ${_formatCountdown(seconds)} before retrying.';
+      _passwordError = 'Too many failed attempts. Please wait ${_formatCountdown(seconds)} before retrying.';
     });
 
     _lockTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -54,10 +58,10 @@ class _MobileScreenState extends State<MobileScreen> {
       setState(() {
         if (_lockRemainingSeconds > 1) {
           _lockRemainingSeconds--;
-          _phoneError = 'Rate limit locked. Please wait ${_formatCountdown(_lockRemainingSeconds)} before retrying.';
+          _passwordError = 'Too many failed attempts. Please wait ${_formatCountdown(_lockRemainingSeconds)} before retrying.';
         } else {
           _lockRemainingSeconds = 0;
-          _phoneError = null;
+          _passwordError = null;
           timer.cancel();
         }
       });
@@ -84,54 +88,57 @@ class _MobileScreenState extends State<MobileScreen> {
     return null;
   }
 
-  Future<void> _handleGetOtp() async {
+  Future<void> _handlePasswordLogin() async {
     if (_lockRemainingSeconds > 0) return;
 
     final phone = _phoneController.text.trim();
-    final err = _validatePhone(phone);
-    if (err != null) {
-      setState(() => _phoneError = err);
+    final password = _passwordController.text;
+    final phoneErr = _validatePhone(phone);
+    final pwdErr = password.isEmpty ? 'Password is required' : null;
+
+    if (phoneErr != null || pwdErr != null) {
+      setState(() {
+        _phoneError = phoneErr;
+        _passwordError = pwdErr;
+      });
       return;
     }
 
     setState(() {
       _phoneError = null;
+      _passwordError = null;
       _isLoading = true;
     });
 
     try {
-      final res = await ApiService.sendOtp(mobile: phone, role: widget.role);
+      final res = await ApiService.loginWithPassword(
+        mobile: phone,
+        password: password,
+        role: widget.role,
+      );
       if (!mounted) return;
       setState(() => _isLoading = false);
 
-      if (res.success) {
+      if (res.success && res.data != null) {
         _lockTimer?.cancel();
         _lockRemainingSeconds = 0;
-        final devOtp = res.data?['devOtp'];
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(devOtp != null
-                ? 'OTP sent! Test OTP is: $devOtp'
-                : 'OTP sent to +91 $phone'),
-            backgroundColor: AppColors.secondary,
-          ),
-        );
-        // Only move to next screen on success!
-        widget.onContinue(phone);
+        final acctTypeStr = res.data!['accountType']?.toString().toLowerCase();
+        final accountType = acctTypeStr == 'returning' ? AccountType.returning : AccountType.firstTime;
+        widget.onLoginSuccess(accountType);
       } else {
         if (res.retryAfterSeconds != null && res.retryAfterSeconds! > 0) {
           _startLockCountdown(res.retryAfterSeconds!);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Rate limit locked. Please wait ${_formatCountdown(res.retryAfterSeconds!)}.'),
+              content: Text('Too many attempts. Please wait ${_formatCountdown(res.retryAfterSeconds!)}.'),
               backgroundColor: AppColors.rose600,
             ),
           );
         } else {
-          setState(() => _phoneError = res.message ?? 'Failed to send OTP. Please check your number.');
+          setState(() => _passwordError = res.message ?? 'Invalid mobile number or password.');
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(res.message ?? 'Failed to send OTP. Please check your number.'),
+              content: Text(res.message ?? 'Invalid mobile number or password.'),
               backgroundColor: AppColors.rose600,
             ),
           );
@@ -141,7 +148,7 @@ class _MobileScreenState extends State<MobileScreen> {
       if (!mounted) return;
       setState(() {
         _isLoading = false;
-        _phoneError = 'Connection failed. Please check network and retry.';
+        _passwordError = 'Connection failed. Please check network and retry.';
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -152,10 +159,74 @@ class _MobileScreenState extends State<MobileScreen> {
     }
   }
 
+  void _showForgotPasswordDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Row(
+          children: [
+            Icon(Icons.lock_reset_rounded, color: AppColors.primary, size: 24),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Forgot Password?',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.slate900),
+              ),
+            ),
+          ],
+        ),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'You can easily recover or reset your password using your linked Google account:',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.slate700, height: 1.45),
+            ),
+            SizedBox(height: 12),
+            Text(
+              '1. Go back and log in with Google.\n2. Open your Profile tab and tap the Settings (⚙️) icon.\n3. Select "Reset Password" to set a new strong password.',
+              style: TextStyle(fontSize: 12.5, color: AppColors.slate600, height: 1.5),
+            ),
+            SizedBox(height: 12),
+            Text(
+              'Still unable to log in? Contact our support team via the Enquiry link available on the login screen.',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.slate600, height: 1.45),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const EnquiryScreen()),
+              );
+            },
+            child: const Text('Enquiry / Contact Us', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              widget.onBack();
+            },
+            child: const Text(
+              'Login with Google',
+              style: TextStyle(fontWeight: FontWeight.w800, color: AppColors.primary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isAdmin = widget.role == UserRole.admin;
-    final hasError = _phoneError != null && _phoneError!.isNotEmpty;
+    final hasPhoneError = _phoneError != null && _phoneError!.isNotEmpty;
+    final hasPasswordError = _passwordError != null && _passwordError!.isNotEmpty;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -165,7 +236,7 @@ class _MobileScreenState extends State<MobileScreen> {
           behavior: HitTestBehavior.opaque,
           child: Column(
             children: [
-              BackBar(onBack: widget.onBack, step: 'Step 1 of 2'),
+              BackBar(onBack: widget.onBack, step: 'Password Login'),
               Expanded(
                 child: SingleChildScrollView(
                   keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
@@ -191,7 +262,7 @@ class _MobileScreenState extends State<MobileScreen> {
                     ),
                     const SizedBox(height: 24),
                     const Text(
-                      'What’s your\nmobile number?',
+                      'Welcome back!\nSign in',
                       style: TextStyle(
                         fontSize: 32,
                         fontWeight: FontWeight.w900,
@@ -202,14 +273,14 @@ class _MobileScreenState extends State<MobileScreen> {
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      'We’ll send a one-time password to verify your ${isAdmin ? "owner" : "student"} account.',
+                      'Enter your registered mobile number and password for your ${isAdmin ? "library owner" : "student"} account.',
                       style: const TextStyle(
                         fontSize: 14,
                         color: AppColors.slate500,
                         height: 1.5,
                       ),
                     ),
-                    const SizedBox(height: 36),
+                    const SizedBox(height: 28),
 
                     // Phone input label
                     Text(
@@ -217,7 +288,7 @@ class _MobileScreenState extends State<MobileScreen> {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w800,
-                        color: hasError ? AppColors.rose600 : AppColors.slate700,
+                        color: hasPhoneError ? AppColors.rose600 : AppColors.slate700,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -226,10 +297,10 @@ class _MobileScreenState extends State<MobileScreen> {
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(18),
                         border: Border.all(
-                          color: hasError ? AppColors.rose500 : AppColors.slate200,
-                          width: hasError ? 1.5 : 1.2,
+                          color: hasPhoneError ? AppColors.rose500 : AppColors.slate200,
+                          width: hasPhoneError ? 1.5 : 1.2,
                         ),
-                        boxShadow: hasError
+                        boxShadow: hasPhoneError
                             ? [
                                 BoxShadow(
                                   color: AppColors.rose500.withOpacity(0.12),
@@ -246,7 +317,7 @@ class _MobileScreenState extends State<MobileScreen> {
                             decoration: BoxDecoration(
                               border: Border(
                                 right: BorderSide(
-                                  color: hasError ? AppColors.rose500.withOpacity(0.3) : AppColors.slate200,
+                                  color: hasPhoneError ? AppColors.rose500.withOpacity(0.3) : AppColors.slate200,
                                 ),
                               ),
                             ),
@@ -264,12 +335,7 @@ class _MobileScreenState extends State<MobileScreen> {
                               controller: _phoneController,
                               autofocus: true,
                               keyboardType: TextInputType.phone,
-                              textInputAction: TextInputAction.done,
-                              onSubmitted: (_) {
-                                if (_phoneController.text.length == 10) {
-                                  _handleGetOtp();
-                                }
-                              },
+                              textInputAction: TextInputAction.next,
                               inputFormatters: [
                                 FilteringTextInputFormatter.digitsOnly,
                                 LengthLimitingTextInputFormatter(10),
@@ -306,9 +372,67 @@ class _MobileScreenState extends State<MobileScreen> {
                         ],
                       ),
                     ),
+                    if (hasPhoneError) ...[
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          const Icon(Icons.error_outline_rounded, size: 14, color: AppColors.rose600),
+                          const SizedBox(width: 5),
+                          Expanded(
+                            child: Text(
+                              _phoneError!,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.rose600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+
+                    const SizedBox(height: 18),
+                    FormFieldWidget(
+                      controller: _passwordController,
+                      label: 'Password',
+                      placeholder: 'Enter your password',
+                      obscureText: _obscurePassword,
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) => _handlePasswordLogin(),
+                      errorText: _lockRemainingSeconds > 0 ? null : (hasPasswordError ? _passwordError : null),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                          size: 19,
+                          color: AppColors.slate500,
+                        ),
+                        onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                      ),
+                      onChanged: (_) {
+                        if (_passwordError != null && _lockRemainingSeconds == 0) {
+                          setState(() => _passwordError = null);
+                        }
+                      },
+                    ),
+
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: _showForgotPasswordDialog,
+                        child: const Text(
+                          'Forgot Password?',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                      ),
+                    ),
 
                     if (_lockRemainingSeconds > 0) ...[
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 4),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         decoration: BoxDecoration(
@@ -370,31 +494,13 @@ class _MobileScreenState extends State<MobileScreen> {
                           ],
                         ),
                       ),
-                    ] else if (hasError) ...[
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          const Icon(Icons.error_outline_rounded, size: 14, color: AppColors.rose600),
-                          const SizedBox(width: 5),
-                          Expanded(
-                            child: Text(
-                              _phoneError!,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.rose600,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
                     ],
 
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 16),
                     CustomButton(
                       label: _lockRemainingSeconds > 0
                           ? 'Locked • Wait ${_formatCountdown(_lockRemainingSeconds)}'
-                          : (_isLoading ? 'Sending code...' : 'Get OTP'),
+                          : (_isLoading ? 'Signing in...' : 'Login'),
                       trailing: _lockRemainingSeconds > 0
                           ? const Icon(Icons.timer_outlined, size: 16, color: Colors.white)
                           : (_isLoading
@@ -407,7 +513,7 @@ class _MobileScreenState extends State<MobileScreen> {
                                   ),
                                 )
                               : const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.white)),
-                      onPressed: (_isLoading || _lockRemainingSeconds > 0) ? null : _handleGetOtp,
+                      onPressed: (_isLoading || _lockRemainingSeconds > 0) ? null : _handlePasswordLogin,
                     ),
 
                     const SizedBox(height: 24),
@@ -428,7 +534,7 @@ class _MobileScreenState extends State<MobileScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Protected & Private',
+                                  'New user? Sign up with Google',
                                   style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w800,
@@ -437,7 +543,7 @@ class _MobileScreenState extends State<MobileScreen> {
                                 ),
                                 SizedBox(height: 2),
                                 Text(
-                                  'We never share your phone number. It is exclusively used for secure biometric and OTP authentication.',
+                                  'New accounts are created exclusively via Google Sign-In, where you set your mobile number and password during setup.',
                                   style: TextStyle(
                                     fontSize: 11,
                                     color: AppColors.slate500,

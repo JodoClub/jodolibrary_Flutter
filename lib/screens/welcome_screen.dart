@@ -220,14 +220,14 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                 onPressed: _isLoading ? null : () => _handleGoogleSignIn(UserRole.admin),
               ),
               const SizedBox(height: 14),
-              // Fallback: Login with Mobile OTP
+              // Fallback: Login with Mobile & Password (existing accounts only; signup is via Google)
               Center(
                 child: Wrap(
                   alignment: WrapAlignment.center,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     const Text(
-                      'Or sign in with Mobile OTP: ',
+                      'Login with Mobile & Password: ',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
@@ -266,6 +266,17 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                       ),
                     ),
                   ],
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Center(
+                child: Text(
+                  'New users: Sign up directly with Google above',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.slate400,
+                  ),
                 ),
               ),
               const SizedBox(height: 16),

@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import 'models/app_models.dart';
 import 'screens/dashboard_landing_screen.dart';
 import 'screens/mobile_screen.dart';
-import 'screens/otp_screen.dart';
 import 'screens/owner_setup_screen.dart';
 import 'screens/partner_home_screen.dart';
 import 'screens/student_home_screen.dart';
@@ -311,6 +310,7 @@ class _JodoRootFlowState extends State<JodoRootFlow> {
         );
 
       case AppScreen.mobile:
+      case AppScreen.otp:
         return PopScope(
           canPop: false,
           onPopInvokedWithResult: (didPop, _) {
@@ -319,26 +319,7 @@ class _JodoRootFlowState extends State<JodoRootFlow> {
           child: MobileScreen(
             role: _role ?? UserRole.student,
             onBack: _restart,
-            onContinue: (phone) {
-              setState(() {
-                _phone = phone;
-                _currentScreen = AppScreen.otp;
-              });
-            },
-          ),
-        );
-
-      case AppScreen.otp:
-        return PopScope(
-          canPop: false,
-          onPopInvokedWithResult: (didPop, _) {
-            if (!didPop) _goTo(AppScreen.mobile);
-          },
-          child: OTPScreen(
-            role: _role ?? UserRole.student,
-            phone: _phone,
-            onBack: () => _goTo(AppScreen.mobile),
-            onVerify: _verifyOtp,
+            onLoginSuccess: _verifyOtp,
           ),
         );
 

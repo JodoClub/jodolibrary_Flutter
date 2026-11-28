@@ -12,6 +12,7 @@ import '../widgets/brand_logo.dart';
 import '../widgets/custom_button.dart';
 import '../widgets/common_widgets.dart';
 import '../widgets/double_back_exit_scope.dart';
+import '../widgets/password_reset_sheet.dart';
 import '../utils/app_haptics.dart';
 import 'library_details_screen.dart';
 
@@ -3582,7 +3583,30 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const BrandLogo(compact: true, inverse: true),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const BrandLogo(compact: true, inverse: true),
+                  Tooltip(
+                    message: 'Profile Settings',
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: () => ProfileSettingsSheet.show(context),
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.16),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white.withValues(alpha: 0.28), width: 1.2),
+                        ),
+                        alignment: Alignment.center,
+                        child: const Icon(Icons.settings_rounded, color: Colors.white, size: 20),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 20),
               Row(
                 children: [
@@ -3854,7 +3878,9 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> with WidgetsBindi
                     ],
                   ),
                 ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 14),
+              const ProfileSettingsTile(),
+              const SizedBox(height: 14),
               CustomButton(
                 label: 'Log out / Switch account',
                 variant: ButtonVariant.ghost,
